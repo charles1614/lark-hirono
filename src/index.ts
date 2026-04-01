@@ -1,0 +1,11 @@
+export { analyzeMarkdown, type AnalysisReport, type DocumentType } from "./analyze.js";
+export { normalizeMarkdown, lintMarkdown, boldTableHeaders, splitInlineBullets, type NormalizationReport } from "./normalize.js";
+export { normalizeHeadingNumbers } from "./headings.js";
+export { preprocessMarkdown, transformHeading, type PreprocessOptions, type RainbowConfig } from "./preprocess.js";
+export { convertToLarkTables } from "./lark-table.js";
+export { splitMarkdown, type Chunk, type ChunkConfig } from "./chunked.js";
+export { computePatches, executePatches } from "./patch.js";
+export { highlightExtract, highlightApply, saveBatches, type TitleEntry, type KeywordEntry } from "./highlight.js";
+export { processImages, extractImageRefs } from "./images.js";
+export { verifyDoc, formatReport } from "./verify.js";
+export { LarkCli, type AuthStatus, type ApiResult, type CliOptions } from "./cli.js";

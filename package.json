@@ -1,0 +1,19 @@
+{
+  "name": "feishu-custom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "pipeline": "tsx src/pipeline.ts",
+    "preprocess": "tsx src/preprocess.ts",
+    "verify": "tsx src/verify.ts",
+    "test": "bash tests/comprehensive-test.sh",
+    "test:upload": "bash tests/upload-test.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

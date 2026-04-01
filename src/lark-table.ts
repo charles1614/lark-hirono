@@ -8,6 +8,7 @@ const SEPARATOR_RE = /^\|([\s:]*-+[\s:]*\|)+$/;
 const TOTAL_WIDTH = 820; // default total width
 const MIN_COL_WIDTH = 80;     // minimum per column
 const MAX_CHAR_WIDTH = 2;      // px per character (approx for CJK)
+const MAX_TABLE_WIDTH = 2000;  // absolute maximum total width
 
 /**
  * Estimate visual width of a cell (strip markdown syntax, count chars).
@@ -65,6 +66,13 @@ function computeColWidths(headerCells: string[], dataRows: string[][]): number[]
     }
   }
   // If naturalTotal >= TOTAL_WIDTH, keep actual widths (expand beyond 820)
+  // But cap at MAX_TABLE_WIDTH
+  const afterExpand = widths.reduce((a, b) => a + b, 0);
+  if (afterExpand > MAX_TABLE_WIDTH) {
+    const scale = MAX_TABLE_WIDTH / afterExpand;
+    widths = widths.map(w => Math.round(w * scale));
+    widths[widths.length - 1] += MAX_TABLE_WIDTH - widths.reduce((a, b) => a + b, 0);
+  }
 
   return widths;
 }

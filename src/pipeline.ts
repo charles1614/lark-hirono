@@ -171,16 +171,10 @@ async function main() {
 
   // 5. Preprocess (heading numbers already normalized in step 2)
   let md = preprocessMarkdown(normalized, { stripTitle: args.stripTitle });
-  md = boldTableHeaders(md);
-  md = convertToLarkTables(md);
-  md = unescapePipes(md); // second pass: unescape \| in lark-table cells
-  md = splitInlineBullets(md);
-  log(args.verbose, `After lark-table: ${md.split("\n").length} lines`);
-
   md = splitOversizedSections(md);
   log(args.verbose, `After section split: ${md.split("\n").length} lines`);
 
-  // 6. Highlight
+  // 6. Highlight (MUST run before convertToLarkTables — works on markdown tables only)
   const highlightKeywordFile = args.input + ".selected_keywords.json";
   let hasKeywordFile = false;
   try { readFileSync(highlightKeywordFile); hasKeywordFile = true; } catch { /* no file */ }
@@ -195,7 +189,8 @@ async function main() {
       log(args.verbose, `Highlight: loading ${keywords.length} keywords`);
       const { markdown: highlighted } = highlightApply(md, keywords);
       md = highlighted.replace(/\{red:\*\*([^*]+)\*\*\}/g, '<text color="red">$1</text>');
-      log(args.verbose, `Highlight: applied ${keywords.length} highlights`);
+      const redCount = (md.match(/<text color="red">/g) || []).length;
+      log(args.verbose, `Highlight: applied, ${redCount} red highlights in markdown`);
     } else {
       const batchPaths = saveBatches(batches, args.input);
       log(args.verbose, `Highlight: saved ${batchPaths.length} batch file(s) for LLM selection`);
@@ -203,13 +198,20 @@ async function main() {
     }
   }
 
+  // 7. Convert markdown tables to lark-table XML
+  md = boldTableHeaders(md);
+  md = convertToLarkTables(md);
+  md = unescapePipes(md); // second pass: unescape \| in lark-table cells
+  md = splitInlineBullets(md);
+  log(args.verbose, `After lark-table: ${md.split("\n").length} lines`);
+
   if (args.dryRun) { process.stdout.write(md); return; }
 
-  // 7. Init CLI
+  // 8. Init CLI
   const cli = new LarkCli({ retries: 3 });
   try { cli.status(); } catch (err) { console.error(`Auth error: ${(err as Error).message}`); process.exit(1); }
 
-  // 8. Create document
+  // 9. Create document
   log(args.verbose, "Creating document...");
   const MAX_BYTES = 50_000;
   const mdBytes = Buffer.byteLength(md, "utf-8");
@@ -257,7 +259,7 @@ async function main() {
 
   log(args.verbose, `Doc ready: ${docId}`);
 
-  // 9. Images
+  // 10. Images
   const imageRefs = extractImageRefs(md);
   if (imageRefs.length > 0) {
     log(args.verbose, `Images: ${imageRefs.length} references found`);
@@ -267,7 +269,7 @@ async function main() {
     } catch (err) { log(args.verbose, `Image error: ${(err as Error).message}`); }
   }
 
-  // 10. Patches (heading backgrounds)
+  // 11. Patches (heading backgrounds)
   const blocks = cli.getBlocks(docId);
   log(args.verbose, `Blocks: ${blocks.length}`);
   const patches = computePatches(blocks, args.bgMode);
@@ -277,7 +279,7 @@ async function main() {
     log(args.verbose, `Patch result: ${ok}/${total}`);
   }
 
-  // 11. Verify
+  // 12. Verify
   if (args.verify) {
     const report = verifyDoc(cli, docId);
     console.log(formatReport(report));

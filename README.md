@@ -1,83 +1,114 @@
 # feishu-custom
 
-Feishu doc creation pipeline with heading numbering, rainbow backgrounds, block-level styling, and full upload workflow.
+Markdown → Feishu (Lark) document pipeline. Converts markdown to styled Feishu documents with heading numbering, table conversion, and upload workflow.
 
-## Quick Start
+## Features
+
+- **Normalize** — HTML → Markdown, table separators, escaped pipes, heading number normalization
+- **Heading numbering** — Blue number prefix with rainbow background per level
+- **Chinese ordinals** — `一、二、` → `1. 2.` auto-convert
+- **Table conversion** — Markdown tables → `<lark-table>` with rich text support (bold, italic, code, colors, lists in cells)
+- **HTML cleanup** — `<p>`, `<strong>`, `<a>`, `<ul>/<li>` → clean Markdown
+- **Highlight** — Keyword-based `{red:**text**}` highlighting
+- **Upload** — Create docs via `lark-cli`, block-level PATCH for heading backgrounds
+- **Verify** — Fetch-back regression testing
+
+## Install
 
 ```bash
-# Install
 pnpm install
 
-# Analyze a markdown file
-pnpx tsx src/pipeline.ts input.md "Title" --analyze
-
-# Dry-run preprocess
-pnpx tsx src/pipeline.ts input.md "Title" --dry-run
-
-# Create doc with full verification
-pnpx tsx src/pipeline.ts input.md "Title" --wiki-space my_library --strip-title --verify -v
-```
-
-## Options
-
-| Flag | Description |
-|------|-------------|
-| `--wiki-node TOKEN` | Target wiki node (default: Hirono Wiki > Testing) |
-| `--wiki-space ID` | Target wiki space (default: Hirono Wiki) |
-| `--strip-title` | Remove first H1, use it as document title |
-| `--bg-mode light\|dark` | Heading background palette (default: `light`) |
-| `--analyze` | Run analysis only (classify document, suggest modules) |
-| `--verify` | Fetch-back and verify after creation |
-| `--dry-run` | Preprocess only, no API calls |
-| `-v, --verbose` | Verbose output |
-
-## Architecture
-
-```
-src/
-├── pipeline.ts    Main orchestration: analyze → normalize → preprocess → create → patch → verify
-├── cli.ts         Lark CLI wrapper (auth + API calls via lark-cli)
-├── analyze.ts     Document classification (narrative/data_table/catalog_table)
-├── normalize.ts   Markdown cleanup (table separators, lint, HTML detection)
-├── preprocess.ts  Blue numbering prefix, heading attribute cleanup
-├── patch.ts       Heading background PATCH (rainbow, shifted by depth)
-├── verify.ts      Fetch-back regression verification
-└── images.ts      Image download/upload (remote → Feishu blocks)
-```
-
-### Upload Workflow
-
-1. **Analyze** — classify document type, detect tables/categories, suggest optimization modules
-2. **Normalize** — clean markdown (table separators, duplicate metadata, lint warnings)
-3. **Preprocess** — blue numbering prefix, strip `{color=...}` attributes
-4. **Create** — `lark-cli docs +create` with preprocessed markdown
-5. **Patch** — detect heading blocks, compute rainbow backgrounds (shifted by actual heading depth), PATCH via `lark-cli api`
-6. **Verify** — fetch blocks back, check heading bg coverage, row counts
-
-### Auth
-
-Auth is managed entirely by `lark-cli`. Login once:
-
-```bash
+# Auth (once)
 lark-cli auth login --domain docs
 ```
 
-The pipeline reads auth status and uses the CLI for all API calls.
+## Usage
 
-### Rainbow Colors
+```bash
+# Dry-run (no API calls, stdout output)
+npx tsx src/pipeline.ts input.md "Title" --dry-run --no-highlight
 
-Heading backgrounds shift based on actual heading depth in the body:
+# Full upload with verification
+npx tsx src/pipeline.ts input.md "Title" --wiki-space 7620053427331681234 --verify -v
 
-| Depth | Light mode | Dark mode |
-|-------|-----------|-----------|
-| Top | LightRed | DarkRed |
-| +1 | LightOrange | DarkOrange |
-| +2 | LightYellow | DarkYellow |
-| +3 | LightGreen | DarkGreen |
-| +4 | LightBlue | DarkBlue |
+# Strip first H1 as document title
+npx tsx src/pipeline.ts input.md --strip-title
+```
 
-When the document title is stripped (`--strip-title`), the top-level body heading gets LightRed, and the rainbow cascades from there.
+### CLI Flags
 
-## Design Docs
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preprocess only, output to stdout |
+| `--no-highlight` | Skip keyword highlighting |
+| `--strip-title` | Remove first H1, use as doc title |
+| `--bg-mode light\|dark` | Heading background palette |
+| `--wiki-space ID` | Target wiki space |
+| `--wiki-node TOKEN` | Target wiki node |
+| `--verify` | Fetch-back verification after upload |
+| `-v, --verbose` | Verbose logging |
 
-See `design/` for detailed design decisions and verified syntax.
+## API
+
+```ts
+import {
+  normalizeMarkdown,
+  preprocessMarkdown,
+  convertToLarkTables,
+  unescapePipes,
+  splitInlineBullets,
+  boldTableHeaders,
+} from "feishu-custom";
+
+// Full pipeline (no upload)
+const { text } = normalizeMarkdown(rawMarkdown);
+const preprocessed = preprocessMarkdown(text);
+const withTables = convertToLarkTables(preprocessed);
+const final = splitInlineBullets(unescapePipes(withTables));
+```
+
+### Modules
+
+| Module | Description |
+|--------|-------------|
+| `normalize` | HTML→md, table separators, heading numbers, escaped pipes |
+| `preprocess` | Blue number prefix, heading `{color}` cleanup |
+| `lark-table` | Markdown tables → `<lark-table>` XML |
+| `headings` | Chinese ordinal normalization, duplicate fix |
+| `highlight` | Keyword extraction, batch processing, apply |
+| `chunked` | Large doc splitting |
+| `patch` | Heading background block-level PATCH |
+| `verify` | Fetch-back regression checks |
+| `cli` | Lark CLI wrapper (`lark-cli` subprocess) |
+| `analyze` | Document type classification |
+
+## Pipeline
+
+```
+Source → Normalize → Analyze → Lint → Preprocess → Lark-table → Unescape → Split → Upload → Patch → Verify
+```
+
+1. **Normalize** — clean markdown (HTML tags, table separators, heading numbers)
+2. **Analyze** — classify document type
+3. **Preprocess** — blue numbering, attribute cleanup
+4. **Lark-table** — convert markdown tables to `<lark-table>` XML
+5. **Unescape** — `\|` → `|` inside lark-table cells
+6. **Upload** — create doc via `lark-cli`
+7. **Patch** — heading background colors via API
+8. **Verify** — fetch-back regression testing
+
+## Tests
+
+```bash
+# Dry-run tests (62 checks, no API)
+pnpm test
+
+# Upload tests (17 checks, creates real doc)
+pnpm run test:upload
+```
+
+Test fixture covers: headings, inline rich text, lists, callouts, code/equations, HTML→markdown, simple/strict/HTML/RW tables, Chinese ordinals, escaped pipes, grid, edge cases, highlight tags.
+
+## License
+
+MIT

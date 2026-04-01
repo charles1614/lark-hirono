@@ -1,2 +1,15 @@
 node_modules/
 dist/
+*.js.map
+*.d.ts.map
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Test output
+/tmp/feishu-*

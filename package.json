@@ -1,15 +1,49 @@
 {
   "name": "feishu-custom",
   "version": "0.1.0",
-  "private": true,
+  "description": "Feishu (Lark) doc creation pipeline — markdown to styled Feishu documents with heading numbering, table conversion, and upload workflow",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./pipeline": {
+      "types": "./dist/pipeline.d.ts",
+      "import": "./dist/pipeline.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "feishu-custom": "dist/pipeline.js"
+  },
   "scripts": {
     "build": "tsc",
     "pipeline": "tsx src/pipeline.ts",
     "preprocess": "tsx src/preprocess.ts",
     "verify": "tsx src/verify.ts",
     "test": "bash tests/comprehensive-test.sh",
-    "test:upload": "bash tests/upload-test.sh"
+    "test:upload": "bash tests/upload-test.sh",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "feishu",
+    "lark",
+    "markdown",
+    "document",
+    "pipeline",
+    "lark-table"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

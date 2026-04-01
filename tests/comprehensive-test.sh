@@ -153,7 +153,24 @@ check "Escaped pipe" 'escaped pipe'
 check "Long title" 'extremely long session'
 
 echo ""
-echo "=== 13. No Residual HTML ==="
+echo "=== 13. Real-World HTML In Tables ==="
+check "R-001 ul-li with bold" '\- \*\*PyTorch\*\*'
+check "R-002 nested p+ul" 'Intro paragraph\.'
+check "R-002 ul items converted" 'Point two'
+check "R-003 br line breaks" 'Second paragraph'
+check "R-004 strong+b mixed" 'bold tag'
+check "R-005 ul with links" '\[NVIDIA\]'
+check "R-006 multi-block cell" 'Conclusion with'
+check "R-007 li with code" 'import torch'
+check "R-008 empty li" 'Has content'
+
+echo ""
+echo "=== 14. Highlight Tags ==="
+check "Highlight tags preserved" 'red:'
+check "Multiple highlight terms" 'PyTorch.*TensorFlow'
+
+echo ""
+echo "=== 15. No Residual HTML ==="
 check_not "No <p>" '</?p>'
 check_not "No <ul>" '</?ul>'
 check_not "No <ol>" '</?ol>'

@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { LarkCli } from "./cli.js";
 import { analyzeMarkdown } from "./analyze.js";
-import { normalizeMarkdown, lintMarkdown, boldTableHeaders, splitInlineBullets, unescapePipes } from "./normalize.js";
+import { normalizeMarkdown, lintMarkdown, boldTableHeaders, unescapePipes } from "./normalize.js";
 import { highlightExtract, saveBatches, highlightApply, type KeywordEntry } from "./highlight.js";
 import { preprocessMarkdown } from "./preprocess.js";
 import { computePatches, executePatches } from "./patch.js";
@@ -201,8 +201,7 @@ async function main() {
   // 7. Convert markdown tables to lark-table XML
   md = boldTableHeaders(md);
   md = convertToLarkTables(md);
-  md = unescapePipes(md); // second pass: unescape \| in lark-table cells
-  md = splitInlineBullets(md);
+  md = unescapePipes(md); // unescape \| in lark-table cells
   log(args.verbose, `After lark-table: ${md.split("\n").length} lines`);
 
   if (args.dryRun) { process.stdout.write(md); return; }

@@ -161,16 +161,3 @@ export function boldTableHeaders(md: string): string {
   }
   return out.join("\n");
 }
-
-/**
- * Convert bullet placeholder __BULLET__ to separate lines.
- * Only affects content outside lark-table blocks.
- * Must run AFTER convertToLarkTables.
- */
-export function splitInlineBullets(md: string): string {
-  const blocks = md.split(/(<lark-table[\s\S]*?<\/lark-table>)/);
-  return blocks.map(block => {
-    if (block.startsWith("<lark-table")) return block;
-    return block.replace(/\s*__BULLET__\s*/g, "\n- ");
-  }).join("");
-}

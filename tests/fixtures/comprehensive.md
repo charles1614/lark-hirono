@@ -365,13 +365,47 @@ Long paragraph: This is an extremely long session title that tests how the pipel
 
 Special characters: (parentheses), [brackets], {braces}, <angles>, "quotes", 'apostrophes', `backticks`.
 
-## 14 Highlight Tags
+## 14 Real-World HTML In Tables (GTC)
+
+These cases represent actual HTML semantics found in GTC catalog markdown:
+`<ul><li>` inside table cells, `<br/>` line breaks, mixed `<strong>`, `<b>`, `<em>`.
+
+| Code | Title | Abstract |
+|---|---|---|
+| R-001 | ul-li with bold | Prerequisites:<ul><li><strong>PyTorch</strong></li><li><strong>CUDA 12+</strong></li></ul> |
+| R-002 | Nested p+ul | Intro paragraph.<ul><li>Point one</li><li>Point two</li></ul>After list. |
+| R-003 | br line breaks | First paragraph.<br>Second paragraph.<br>Third paragraph. |
+| R-004 | mixed strong+b | Text with <strong>strong</strong> and <b>bold tag</b>. |
+| R-005 | ul with links | <ul><li>[NVIDIA](https://nvidia.com)</li><li>[GitHub](https://github.com)</li></ul> |
+| R-006 | multi-block cell | Intro.<ul><li>Item A</li><li>Item B</li></ul>Conclusion with **bold**. |
+| R-007 | li with code | <ul><li>`import torch`</li><li>`pip install`</li></ul> |
+| R-008 | empty li | <ul><li>Has content</li><li></li></ul> |
+
+## 15 Highlight Tags
 
 | Code | Title | Abstract |
 |---|---|---|
 | HL-001 | Single highlight | Session about {red:**CUDA**} programming. |
 | HL-002 | Multiple highlights | Covers {red:**PyTorch**} and {red:**TensorFlow**}. |
 | HL-003 | No highlight | This cell has no highlight tags. |
+
+## Extra — GTC Real-World HTML Semantics
+
+These cases come from actual GTC catalog markdown: `<ul><li>` inside table cells,
+`<br/>` line breaks, mixed `<strong>`/`<b>`/`<em>`/`<i>`, multi-paragraph cells.
+
+| Code | Title | Abstract |
+|---|---|---|
+| H-001 | ul-li in cell | <p>Prerequisites:</p><ul><li><strong>PyTorch</strong></li><li><strong>CUDA 12+</strong></li><li>Python 3.10</li></ul> |
+| H-002 | ul-li with links | <p>Resources:</p><ul><li><a href="https://nvidia.com">NVIDIA</a></li><li><a href="https://github.com">GitHub</a></li></ul> |
+| H-003 | ul-li with bold | <ul><li><strong>Bold item</strong></li><li><b>Another bold</b></li><li>Plain item</li></ul> |
+| H-004 | br line breaks | <p>First paragraph.</p><br><p>Second paragraph after break.</p><br><p>Third paragraph.</p> |
+| H-005 | br in cell end | Start text.<br><br>More text.<br>Final line. |
+| H-006 | strong+b+i+em | Text with <strong>strong</strong> and <b>bold</b> and <em>italic</em> and <i>italic2</i>. |
+| H-007 | p inside ul-li | <ul><li><p>Item with paragraph</p></li><li><p>Second item</p></li></ul> |
+| H-008 | complex nested | <p>Intro text.</p><ul><li><strong>Bold item</strong> with <a href="https://x.com">link</a></li><li><b>B tag</b> and <i>italic</i></li></ul><p>After list.</p> |
+| H-009 | empty li | <ul><li>Has content</li><li></li></ul> |
+| H-010 | li with code | <ul><li>First with `inline code`</li><li>Second plain</li></ul> |
 
 ## 15 Verification Targets
 

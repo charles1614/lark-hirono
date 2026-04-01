@@ -1,5 +1,5 @@
 export { analyzeMarkdown, type AnalysisReport, type DocumentType } from "./analyze.js";
-export { normalizeMarkdown, lintMarkdown, boldTableHeaders, splitInlineBullets, type NormalizationReport } from "./normalize.js";
+export { normalizeMarkdown, lintMarkdown, boldTableHeaders, type NormalizationReport } from "./normalize.js";
 export { normalizeHeadingNumbers } from "./headings.js";
 export { preprocessMarkdown, transformHeading, type PreprocessOptions, type RainbowConfig } from "./preprocess.js";
 export { convertToLarkTables } from "./lark-table.js";

@@ -127,30 +127,12 @@ export function convertToLarkTables(md: string): string {
           } else {
             result.push("    <lark-td>");
             const subLines = processed.split("\n");
-            // Detect bullet items: `- item`, `__BULLET__ item`, `**__BULLET__** item`, etc.
-            const hasBullets = subLines.some(sl => {
-              const t = sl.trim();
-              return /^[-*+]\s/.test(t)
-                || /__BULLET__/.test(t);
-            });
-            if (hasBullets) {
-              for (const sl of subLines) {
-                let trimmed = sl.trim();
-                // Convert __BULLET__ (with optional ** wrapping) to proper `-`
-                trimmed = trimmed.replace(/\*\*__BULLET__\*\*/g, "-")
-                                 .replace(/__BULLET__/g, "-");
-                // Ensure proper `- ` bullet format
-                if (/^-/.test(trimmed) && !/^- /.test(trimmed)) {
-                  trimmed = "- " + trimmed.slice(1);
-                }
-                // Ensure numbered list format
-                if (/^\d+\.?/.test(trimmed) && !/^\d+\.\s/.test(trimmed)) {
-                  trimmed = trimmed.replace(/^(\d+)\.?\s*/, "$1. ");
-                }
-                if (trimmed) result.push(`      ${trimmed}`);
-              }
-            } else {
-              result.push(`      ${processed}`);
+            // Clean up any residual __BULLET__ from older source data
+            for (const sl of subLines) {
+              let trimmed = sl.trim();
+              trimmed = trimmed.replace(/\*\*__BULLET__\*\*/g, "- ")
+                .replace(/__BULLET__/g, "- ");
+              if (trimmed) result.push(`      ${trimmed}`);
             }
             result.push("    </lark-td>");
           }

@@ -127,7 +127,7 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   result = result.replace(/<\/?ul>/gi, "");
   result = result.replace(/<\/?ol>/gi, "");
   result = result.replace(/<li>/gi, "- ");
-  result = result.replace(/<\/li>/gi, "\n");
+  result = result.replace(/<\/li>/gi, " ");
   result = result.replace(/<\/?p>/gi, "");
   result = result.replace(/<\/?strong>/gi, "**");
   result = result.replace(/<\/?em>/gi, "*");

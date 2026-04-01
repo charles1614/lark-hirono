@@ -16,13 +16,13 @@ const MAX_CHAR_WIDTH = 2;   // px per character (approx for CJK)
  */
 function cellWidth(cell: string): number {
   const stripped = cell
-    .replace(/\*\*([^*]+)\*\*/g, "$1")  // bold
-    .replace(/\*([^*]+)\*/g, "$1")       // italic
-    .replace(/`([^`]+)`/g, "$1")         // code
-    .replace(/~~([^~]+)~~/g, "$1")       // strikethrough
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links
-    .replace(/<[^>]+>/g, "")             // HTML tags
-    .replace(/\s+/g, " ")                // collapse whitespace
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/~~([^~]+)~~/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
     .trim();
   const cjk = (stripped.match(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/g) || []).length;
   return stripped.length + cjk;
@@ -60,10 +60,8 @@ function computeColWidths(headerCells: string[], dataRows: string[][]): number[]
     return pct(w, 0.7);
   });
 
-  // Natural widths: [80, 600]
   let widths = repChars.map(ch => Math.max(MIN_COL_WIDTH, Math.min(MAX_COL_WIDTH, Math.round(ch * MAX_CHAR_WIDTH))));
 
-  // Expand short tables to 820
   let total = widths.reduce((a, b) => a + b, 0);
   if (total < TOTAL_WIDTH) {
     const factor = TOTAL_WIDTH / total;
@@ -72,6 +70,100 @@ function computeColWidths(headerCells: string[], dataRows: string[][]): number[]
   }
 
   return widths;
+}
+
+/**
+ * Parse multi-line table rows from normalized markdown.
+ * A row can span multiple lines if cell content contains newlines (e.g., from
+ * </li> → \n). We collect all lines until we find one that could be the start
+ * of a new row or separator.
+ *
+ * Strategy: look ahead from the current position. If we find a proper markdown
+ * table row pattern (|header| or |---|), start of new table, or non-pipe line,
+ * those are NOT part of the current cell. Everything in between is continuation.
+ */
+function parseTableRows(lines: string[], startIdx: number): { header: string[]; dataRows: string[][]; endIdx: number } {
+  const header = parseTableRow(lines[startIdx]);
+  const rows: string[][] = [];
+  let j = startIdx + 2; // skip header + separator
+
+  while (j < lines.length) {
+    const line = lines[j];
+    const trimmed = line.trim();
+
+    // Skip blank lines
+    if (!trimmed) { j++; continue; }
+
+    // Check if this line starts a new table structure or non-table content
+    if (!trimmed.startsWith("|")) {
+      break; // End of table
+    }
+
+    // This could be a continuation of a multi-line cell if pipe count doesn't match
+    // Try to parse it as a complete row first
+    const parts = parseTableRow(line);
+    if (parts.length === header.length) {
+      // Looks like a complete row — but check if it's actually a separator
+      if (SEPARATOR_RE.test(trimmed)) {
+        break; // New table starts
+      }
+      // Check if any cell is multi-line content by looking ahead
+      // A continuation line starts with | but has < cells than header
+      j++;
+      // Peek ahead: check if next non-blank line continues the current row
+      while (j < lines.length) {
+        const peek = lines[j].trim();
+        if (!peek) { j++; continue; }
+        const peekParts = parseTableRow(peek);
+        if (peek.length === 0 || !peek.startsWith("|") || peekParts.length === header.length) {
+          break; // This is NOT a continuation
+        }
+        // This is a continuation line — merge into current row
+        for (let ci = 0; ci < Math.min(peekParts.length, parts.length); ci++) {
+          // Try to append to the last cell (continuation content)
+          if (ci === parts.length - 1) {
+            parts[ci] += "\n" + peekParts[ci];
+          } else {
+            // Multi-part line — treat as cell continuation
+            parts[ci] += peekParts[ci];
+          }
+        }
+        j++;
+      }
+      rows.push(parts);
+    } else {
+      // Incomplete row — could be multi-line cell content
+      // Accumulate continuation lines
+      let multiLine = line;
+      j++;
+      while (j < lines.length) {
+        const peek = lines[j].trim();
+        if (!peek) { j++; continue; }
+        const peekParts = parseTableRow(peek);
+        // If this looks like a complete row or new content, stop accumulating
+        if (peekParts.length === header.length || !peek.startsWith("|")) {
+          break;
+        }
+        multiLine += "\n" + lines[j];
+        j++;
+      }
+      // Parse the accumulated multi-line block as rows
+      // The first part is a complete row, rest are continuations
+      const fullParts = parseTableRow(multiLine.split("\n")[0]);
+      // Merge continuation lines into appropriate cells
+      for (const cl of multiLine.split("\n").slice(1)) {
+        const clParts = parseTableRow(cl.trim());
+        for (let ci = 0; ci < clParts.length && ci < header.length; ci++) {
+          fullParts[ci] += "\n" + clParts[ci];
+        }
+      }
+      if (fullParts.length === header.length) {
+        rows.push(fullParts);
+      }
+    }
+  }
+
+  return { header, dataRows: rows, endIdx: j };
 }
 
 export function convertToLarkTables(md: string): string {
@@ -85,16 +177,10 @@ export function convertToLarkTables(md: string): string {
     if (
       TABLE_ROW_RE.test(line.trim()) &&
       i + 1 < lines.length &&
-      SEPARATOR_RE.test(lines[i + 1].trim())
+      SEPARATOR_RE.test(lines[i + 1]?.trim() ?? "")
     ) {
-      const headerCells = parseTableRow(line);
-
-      const dataRows: string[][] = [];
-      let j = i + 2;
-      while (j < lines.length && TABLE_ROW_RE.test(lines[j].trim())) {
-        dataRows.push(parseTableRow(lines[j]));
-        j++;
-      }
+      const { header: headerCells, dataRows, endIdx } = parseTableRows(lines, i);
+      i = endIdx;
 
       const colWidths = computeColWidths(headerCells, dataRows);
       const colCount = headerCells.length;
@@ -104,6 +190,7 @@ export function convertToLarkTables(md: string): string {
         `<lark-table rows="${totalRows}" cols="${colCount}" header-row="true" column-widths="${colWidths.join(",")}">`
       );
 
+      // Header row
       result.push("");
       result.push("  <lark-tr>");
       for (const cell of headerCells) {
@@ -113,6 +200,7 @@ export function convertToLarkTables(md: string): string {
       }
       result.push("  </lark-tr>");
 
+      // Data rows
       for (const row of dataRows) {
         result.push("");
         result.push("  <lark-tr>");
@@ -127,11 +215,8 @@ export function convertToLarkTables(md: string): string {
           } else {
             result.push("    <lark-td>");
             const subLines = processed.split("\n");
-            // Clean up any residual __BULLET__ from older source data
             for (const sl of subLines) {
-              let trimmed = sl.trim();
-              trimmed = trimmed.replace(/\*\*__BULLET__\*\*/g, "- ")
-                .replace(/__BULLET__/g, "- ");
+              const trimmed = sl.trim();
               if (trimmed) result.push(`      ${trimmed}`);
             }
             result.push("    </lark-td>");
@@ -142,7 +227,6 @@ export function convertToLarkTables(md: string): string {
 
       result.push("</lark-table>");
       result.push("");
-      i = j;
     } else {
       result.push(line);
       i++;

@@ -130,7 +130,7 @@ Display equation:
 
 ## 8 Table Matrix (strict lark-table)
 
-<lark-table column-widths="110,160,460" header-row="true">
+<lark-table column-widths="120,160,540" header-row="true">
 <lark-tr>
 <lark-td>
 

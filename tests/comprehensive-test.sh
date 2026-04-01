@@ -126,7 +126,7 @@ check "Alpha row preserved" 'Alpha'
 
 echo ""
 echo "=== 8. Table — strict lark-table (passthrough) ==="
-check "Strict lark-table preserved" '<lark-table column-widths="110,160,460"'
+check "Strict lark-table preserved" '<lark-table column-widths="120,160,540"'
 check "Strict lark-table cells" 'inline-rich'
 
 echo ""

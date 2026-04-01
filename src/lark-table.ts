@@ -5,6 +5,69 @@
 
 const TABLE_ROW_RE = /^\|(.+)\|$/;
 const SEPARATOR_RE = /^\|([\s:]*-+[\s:]*\|)+$/;
+const TOTAL_WIDTH = 820; // default total width
+const MIN_COL_WIDTH = 80;     // minimum per column
+const MAX_CHAR_WIDTH = 2;      // px per character (approx for CJK)
+
+/**
+ * Estimate visual width of a cell (strip markdown syntax, count chars).
+ * CJK chars count as 2x since they take more horizontal space.
+ */
+function cellWidth(cell: string): number {
+  const stripped = cell
+    .replace(/\*\*([^*]+)\*\*/g, "$1")  // bold
+    .replace(/\*([^*]+)\*/g, "$1")       // italic
+    .replace(/`([^`]+)`/g, "$1")         // code
+    .replace(/~~([^~]+)~~/g, "$1")       // strikethrough
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links
+    .replace(/<[^>]+>/g, "")             // HTML tags
+    .replace(/\s+/g, " ")                // collapse whitespace
+    .trim();
+  // CJK chars are roughly 2x wide
+  const cjk = (stripped.match(/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/g) || []).length;
+  return stripped.length + cjk;
+}
+
+/**
+ * Compute column widths proportional to actual content.
+ * - Short content: expand to 820 total
+ * - Long content: exceed 820 to avoid truncation
+ */
+function computeColWidths(headerCells: string[], dataRows: string[][]): number[] {
+  const colCount = headerCells.length;
+  if (colCount === 0) return [];
+
+  // Max char width per column (header + all data cells)
+  const maxChars = headerCells.map((h, ci) => {
+    const headerW = cellWidth(h);
+    const dataW = Math.max(0, ...dataRows.map(r => cellWidth(r[ci] ?? "")));
+    return Math.max(headerW, dataW);
+  });
+
+  // Natural widths: chars × px-per-char, clamped to minimum
+  let widths = maxChars.map(chars => Math.max(MIN_COL_WIDTH, chars * MAX_CHAR_WIDTH));
+
+  const naturalTotal = widths.reduce((a, b) => a + b, 0);
+
+  // Expand to TOTAL_WIDTH if content is short
+  if (naturalTotal < TOTAL_WIDTH) {
+    const slack = TOTAL_WIDTH - naturalTotal;
+    if (naturalTotal === 0) {
+      // All empty — equal width
+      widths = Array(colCount).fill(Math.floor(TOTAL_WIDTH / colCount));
+    } else {
+      // Fill slack proportionally
+      for (let i = 0; i < colCount; i++) {
+        widths[i] += Math.round(slack * (widths[i] / naturalTotal));
+      }
+      // Fix rounding
+      widths[0] += TOTAL_WIDTH - widths.reduce((a, b) => a + b, 0);
+    }
+  }
+  // If naturalTotal >= TOTAL_WIDTH, keep actual widths (expand beyond 820)
+
+  return widths;
+}
 
 export function convertToLarkTables(md: string): string {
   const lines = md.split("\n");
@@ -22,8 +85,6 @@ export function convertToLarkTables(md: string): string {
     ) {
       // Parse header
       const headerCells = parseTableRow(line);
-      const colWidths = headerCells.map(() => 104);
-      const colCount = headerCells.length;
 
       // Collect data rows
       const dataRows: string[][] = [];
@@ -32,6 +93,10 @@ export function convertToLarkTables(md: string): string {
         dataRows.push(parseTableRow(lines[j]));
         j++;
       }
+
+      // Compute proportional column widths
+      const colWidths = computeColWidths(headerCells, dataRows);
+      const colCount = headerCells.length;
 
       // Generate lark-table
       const totalRows = dataRows.length + 1; // +1 for header

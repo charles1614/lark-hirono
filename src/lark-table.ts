@@ -7,9 +7,8 @@ const TABLE_ROW_RE = /^\|(.+)\|$/;
 const SEPARATOR_RE = /^\|([\s:]*-+[\s:]*\|)+$/;
 const TOTAL_WIDTH = 820; // target total width for compact tables
 const MIN_COL_WIDTH = 80;    // minimum per column
-const MAX_CHAR_WIDTH = 2;   // px per character (approx for CJK)
 const MAX_TABLE_WIDTH = 1500; // absolute maximum total width
-const PCTILE = 0.7;          // use P70 of cell widths to avoid outliers
+const MAX_CHAR_WIDTH = 2;   // px per character (approx for CJK)
 
 /**
  * Estimate visual width of a cell (strip markdown syntax, count chars).
@@ -30,55 +29,80 @@ function cellWidth(cell: string): number {
   return stripped.length + cjk;
 }
 
+/** Percentile from sorted array */
+function pct(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  return sorted[Math.floor((sorted.length - 1) * p)];
+}
+
+
+
 /**
  * Smart column width computation.
  *
  * Strategy:
- * 1. For each column, use P70 (70th percentile) of cell widths instead of max.
- *    This avoids single super-long cells from blowing up the column.
- * 2. Distribute proportionally, clamped between MIN and reasonable max.
- * 3. If content is short, upscale to TOTAL_WIDTH (820).
- * 4. If content is long, exceed 820 but hard cap at MAX_TABLE_WIDTH (1500).
+ * 1. P70 of cell chars per column (avoids outlier extremes, no log compression).
+ * 2. Each column gets a per-char width (P70 × 2px), clamped to MIN.
+ * 3. If total < 820: expand proportionally to fill 820.
+ * 4. If total > 1500: cap dominant column at 40% of 1500, redistribute surplus.
  */
-function p70(arr: number[]): number {
-  if (arr.length === 0) return 0;
-  const sorted = [...arr].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) * PCTILE)];
-}
-
 function computeColWidths(headerCells: string[], dataRows: string[][]): number[] {
   const colCount = headerCells.length;
   if (colCount === 0) return [];
 
-  // Gather per-column cell widths (all rows, including header)
-  const colCharWidths = headerCells.map((_, ci) => {
+  // Step 1: Gather cell char widths per column (header + all data rows)
+  const charWidths = headerCells.map((_, ci) => {
     const headerW = cellWidth(headerCells[ci] ?? "");
     const dataWs = dataRows.map(r => cellWidth(r[ci] ?? ""));
     return [headerW, ...dataWs];
   });
 
-  // P70 of each column avoids single super-long outlier cells
-  const p70s = colCharWidths.map(w => p70(w));
+  // Step 2: P70 chars per column
+  const p70s = charWidths.map(w => {
+    const sorted = [...w].sort((a, b) => a - b);
+    return pct(sorted, 0.7);
+  });
 
-  // Natural widths: P70 × px-per-char, clamped to minimum
-  let widths = p70s.map(ch => Math.max(MIN_COL_WIDTH, ch * MAX_CHAR_WIDTH));
+  // Step 3: Natural width = P70 × 2px, clamped to MIN
+  let widths = p70s.map(ch => Math.max(MIN_COL_WIDTH, Math.round(ch * MAX_CHAR_WIDTH)));
 
   const naturalTotal = widths.reduce((a, b) => a + b, 0);
 
   if (naturalTotal < TOTAL_WIDTH) {
-    // Short content — expand to 820
+    // Short table: expand to 820 proportionally
     const slack = TOTAL_WIDTH - naturalTotal;
-    if (naturalTotal === 0) {
-      widths = Array(colCount).fill(Math.floor(TOTAL_WIDTH / colCount));
-    } else {
-      for (let i = 0; i < colCount; i++) {
-        widths[i] += Math.round(slack * (widths[i] / naturalTotal));
-      }
-      widths[0] += TOTAL_WIDTH - widths.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < colCount; i++) {
+      widths[i] += Math.round(slack * (widths[i] / naturalTotal));
     }
-  } else {
-    // Long content — keep proportional but cap total at MAX_TABLE_WIDTH
-    if (naturalTotal > MAX_TABLE_WIDTH) {
+    widths[0] += TOTAL_WIDTH - widths.reduce((a, b) => a + b, 0);
+  } else if (naturalTotal > MAX_TABLE_WIDTH) {
+    // Too wide: cap dominant column at 40% of 1500, redistribute surplus
+    const maxCol = Math.floor(MAX_TABLE_WIDTH * 0.40);
+    let capped = false;
+    for (let i = 0; i < colCount; i++) {
+      if (widths[i] > maxCol) {
+        widths[i] = maxCol;
+        capped = true;
+      }
+    }
+    // If we capped, the total is now below 1500 — expand remaining cols
+    if (capped) {
+      const curTotal = widths.reduce((a, b) => a + b, 0);
+      const slack = Math.min(naturalTotal, MAX_TABLE_WIDTH) - curTotal;
+      if (slack > 0) {
+        const headroom = widths.map((w, i) => Math.max(0, Math.round(p70s[i] * MAX_CHAR_WIDTH) - w));
+        const totalHeadroom = headroom.reduce((a, b) => a + b, 0);
+        if (totalHeadroom > 0) {
+          for (let i = 0; i < colCount; i++) {
+            if (widths[i] < maxCol) {
+              widths[i] += Math.round(slack * (headroom[i] / totalHeadroom));
+            }
+          }
+        }
+        widths[0] += Math.min(naturalTotal, MAX_TABLE_WIDTH) - widths.reduce((a, b) => a + b, 0);
+      }
+    } else {
+      // No single column exceeded 40% — scale all down
       const scale = MAX_TABLE_WIDTH / naturalTotal;
       widths = widths.map(w => Math.round(w * scale));
       widths[widths.length - 1] += MAX_TABLE_WIDTH - widths.reduce((a, b) => a + b, 0);

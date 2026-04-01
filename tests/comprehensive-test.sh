@@ -157,6 +157,7 @@ echo "=== 13. Real-World HTML In Tables ==="
 check "R-001 ul-li with bold" '\- \*\*PyTorch\*\*'
 check "R-002 nested p+ul" 'Intro paragraph\.'
 check "R-002 ul items converted" 'Point two'
+check "R-003 br line breaks" 'Second paragraph'
 check "R-004 strong+b mixed" 'bold tag'
 check "R-005 ul with links" '\[NVIDIA\]'
 check "R-006 multi-block cell" 'Conclusion with'

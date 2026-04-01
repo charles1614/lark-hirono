@@ -5,10 +5,11 @@
 
 const TABLE_ROW_RE = /^\|(.+)\|$/;
 const SEPARATOR_RE = /^\|([\s:]*-+[\s:]*\|)+$/;
-const TOTAL_WIDTH = 820; // default total width
-const MIN_COL_WIDTH = 80;     // minimum per column
-const MAX_CHAR_WIDTH = 2;      // px per character (approx for CJK)
-const MAX_TABLE_WIDTH = 2000;  // absolute maximum total width
+const TOTAL_WIDTH = 820; // target total width for compact tables
+const MIN_COL_WIDTH = 80;    // minimum per column
+const MAX_CHAR_WIDTH = 2;   // px per character (approx for CJK)
+const MAX_TABLE_WIDTH = 1500; // absolute maximum total width
+const PCTILE = 0.7;          // use P70 of cell widths to avoid outliers
 
 /**
  * Estimate visual width of a cell (strip markdown syntax, count chars).
@@ -30,48 +31,58 @@ function cellWidth(cell: string): number {
 }
 
 /**
- * Compute column widths proportional to actual content.
- * - Short content: expand to 820 total
- * - Long content: exceed 820 to avoid truncation
+ * Smart column width computation.
+ *
+ * Strategy:
+ * 1. For each column, use P70 (70th percentile) of cell widths instead of max.
+ *    This avoids single super-long cells from blowing up the column.
+ * 2. Distribute proportionally, clamped between MIN and reasonable max.
+ * 3. If content is short, upscale to TOTAL_WIDTH (820).
+ * 4. If content is long, exceed 820 but hard cap at MAX_TABLE_WIDTH (1500).
  */
+function p70(arr: number[]): number {
+  if (arr.length === 0) return 0;
+  const sorted = [...arr].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) * PCTILE)];
+}
+
 function computeColWidths(headerCells: string[], dataRows: string[][]): number[] {
   const colCount = headerCells.length;
   if (colCount === 0) return [];
 
-  // Max char width per column (header + all data cells)
-  const maxChars = headerCells.map((h, ci) => {
-    const headerW = cellWidth(h);
-    const dataW = Math.max(0, ...dataRows.map(r => cellWidth(r[ci] ?? "")));
-    return Math.max(headerW, dataW);
+  // Gather per-column cell widths (all rows, including header)
+  const colCharWidths = headerCells.map((_, ci) => {
+    const headerW = cellWidth(headerCells[ci] ?? "");
+    const dataWs = dataRows.map(r => cellWidth(r[ci] ?? ""));
+    return [headerW, ...dataWs];
   });
 
-  // Natural widths: chars × px-per-char, clamped to minimum
-  let widths = maxChars.map(chars => Math.max(MIN_COL_WIDTH, chars * MAX_CHAR_WIDTH));
+  // P70 of each column avoids single super-long outlier cells
+  const p70s = colCharWidths.map(w => p70(w));
+
+  // Natural widths: P70 × px-per-char, clamped to minimum
+  let widths = p70s.map(ch => Math.max(MIN_COL_WIDTH, ch * MAX_CHAR_WIDTH));
 
   const naturalTotal = widths.reduce((a, b) => a + b, 0);
 
-  // Expand to TOTAL_WIDTH if content is short
   if (naturalTotal < TOTAL_WIDTH) {
+    // Short content — expand to 820
     const slack = TOTAL_WIDTH - naturalTotal;
     if (naturalTotal === 0) {
-      // All empty — equal width
       widths = Array(colCount).fill(Math.floor(TOTAL_WIDTH / colCount));
     } else {
-      // Fill slack proportionally
       for (let i = 0; i < colCount; i++) {
         widths[i] += Math.round(slack * (widths[i] / naturalTotal));
       }
-      // Fix rounding
       widths[0] += TOTAL_WIDTH - widths.reduce((a, b) => a + b, 0);
     }
-  }
-  // If naturalTotal >= TOTAL_WIDTH, keep actual widths (expand beyond 820)
-  // But cap at MAX_TABLE_WIDTH
-  const afterExpand = widths.reduce((a, b) => a + b, 0);
-  if (afterExpand > MAX_TABLE_WIDTH) {
-    const scale = MAX_TABLE_WIDTH / afterExpand;
-    widths = widths.map(w => Math.round(w * scale));
-    widths[widths.length - 1] += MAX_TABLE_WIDTH - widths.reduce((a, b) => a + b, 0);
+  } else {
+    // Long content — keep proportional but cap total at MAX_TABLE_WIDTH
+    if (naturalTotal > MAX_TABLE_WIDTH) {
+      const scale = MAX_TABLE_WIDTH / naturalTotal;
+      widths = widths.map(w => Math.round(w * scale));
+      widths[widths.length - 1] += MAX_TABLE_WIDTH - widths.reduce((a, b) => a + b, 0);
+    }
   }
 
   return widths;
@@ -124,37 +135,40 @@ export function convertToLarkTables(md: string): string {
 
       // Data rows
       for (const row of dataRows) {
+        result.push("");
         result.push("  <lark-tr>");
-        for (const cell of row) {
-          result.push("    <lark-td>");
-          // Convert {red:**text**} → <text color="red">**text**</text>
-          let processed = cell.replace(
-            /\{(\w+):\*\*([^*]+)\*\*\}/g,
-            '<text color="$1">**$2**</text>'
-          );
-          // Convert <br> to newlines (safe inside lark-table cells)
-          processed = processed.replace(/<br\s*\/?>/gi, "\n");
-          // Convert bullet placeholder to newline + dash (safe inside cells)
-          processed = processed.replace(/\s*__BULLET__\s*/g, "\n- ");
-          // Fix: Feishu lark-table parser drops cells ending with </text>
-          // Append zero-width space (\u200B) to prevent content loss
-          if (processed.trimEnd().endsWith('</text>')) {
-            processed = processed.trimEnd() + '\u200B';
+        for (let ci = 0; ci < colCount; ci++) {
+          const cell = ci < row.length ? row[ci] : "";
+          const cellLines = cell.trim().split("\n");
+          const processed = cellLines.map(c => c.replace(/^\s+/, "")).join("\n");
+
+          if (processed.trim() === "") {
+            result.push("    <lark-td>");
+            result.push("    </lark-td>");
+          } else {
+            result.push("    <lark-td>");
+            // Check for inline bullets (un/ordered list items)
+            const subLines = processed.split("\n");
+            if (subLines.some(sl => /^[-*+]\s/.test(sl.trim()) || /^\d+\.\s/.test(sl.trim()))) {
+              // Inline list items — each becomes a separate block for better rendering
+              for (const sl of subLines) {
+                const trimmed = sl.trim();
+                if (trimmed) {
+                  result.push(`      ${trimmed}`);
+                }
+              }
+            } else {
+              result.push(`      ${processed}`);
+            }
+            result.push("    </lark-td>");
           }
-          // Preserve newlines inside cells
-          const cellLines = processed.split("\n");
-          for (const cl of cellLines) {
-            result.push(`      ${cl.trim()}`);
-          }
-          result.push("    </lark-td>");
         }
         result.push("  </lark-tr>");
       }
 
       result.push("</lark-table>");
       result.push("");
-
-      i = j; // advance past all table rows
+      i = j;
     } else {
       result.push(line);
       i++;
@@ -179,13 +193,17 @@ function parseTableRow(line: string): string[] {
     } else if (content[i] === ">") {
       inTag = false;
       current += content[i];
-    } else if (content[i] === "|" && !inTag && (i === 0 || content[i - 1] !== "\\")) {
-      cells.push(current);
-      current = "";
+    } else if (content[i] === "|" && !inTag) {
+      if (i > 0 && content[i - 1] === "\\") {
+        current = current.slice(0, -1) + "|";
+      } else {
+        cells.push(current);
+        current = "";
+      }
     } else {
       current += content[i];
     }
   }
   cells.push(current);
-  return cells.map((c) => c.trim());
+  return cells;
 }

@@ -133,6 +133,9 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   result = result.replace(/<\/?em>/gi, "*");
   result = result.replace(/<\/?b>/gi, "**");
   result = result.replace(/<\/?i>/gi, "*");
+  result = result.replace(/<\/?u>/gi, "");
+  result = result.replace(/<\/?s>/gi, "~~");
+  result = result.replace(/<\?xml[^>]*>/gi, "");
 
   // 5. Normalize heading numbers (Chinese ordinals → Arabic, fix duplicates)
   result = normalizeHeadingNumbers(result);

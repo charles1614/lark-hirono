@@ -1,31 +1,28 @@
 # feishu-custom
 
-Markdown → Feishu (Lark) document pipeline. Converts markdown to styled Feishu documents with heading numbering, table conversion, and upload workflow.
+Markdown → Feishu (Lark) document pipeline. Converts markdown tables with embedded HTML semantics to styled Feishu documents.
 
 ## Features
 
-- **Normalize** — HTML → Markdown, table separators, escaped pipes, heading number normalization
-- **Heading numbering** — Blue number prefix with rainbow background per level
+- **Normalize** — HTML → Markdown (`<p>`, `<ul>`, `<li>`, `<strong>`, `<a>`, `<br>`, `<em>`, `<i>`, `<b>`). `<li>` converts to `- ` list items. `<br>` converts to newlines in cells.
+- **Heading numbering** — Blue number prefix with rainbow background per heading level
 - **Chinese ordinals** — `一、二、` → `1. 2.` auto-convert
-- **Table conversion** — Markdown tables → `<lark-table>` with rich text support (bold, italic, code, colors, lists in cells)
-- **HTML cleanup** — `<p>`, `<strong>`, `<a>`, `<ul>/<li>` → clean Markdown
-- **Highlight** — Keyword-based `{red:**text**}` highlighting
-- **Upload** — Create docs via `lark-cli`, block-level PATCH for heading backgrounds
+- **Table conversion** — Markdown tables → `<lark-table>` XML with smart proportional column widths
+- **Highlight** — Keyword-based red highlighting for table titles
+- **Upload** — Chunked doc creation via `lark-cli`, block-level PATCH for heading backgrounds
 - **Verify** — Fetch-back regression testing
 
 ## Install
 
 ```bash
 pnpm install
-
-# Auth (once)
 lark-cli auth login --domain docs
 ```
 
 ## Usage
 
 ```bash
-# Dry-run (no API calls, stdout output)
+# Dry-run (preprocess only)
 npx tsx src/pipeline.ts input.md "Title" --dry-run --no-highlight
 
 # Full upload with verification
@@ -48,66 +45,48 @@ npx tsx src/pipeline.ts input.md --strip-title
 | `--verify` | Fetch-back verification after upload |
 | `-v, --verbose` | Verbose logging |
 
-## API
-
-```ts
-import {
-  normalizeMarkdown,
-  preprocessMarkdown,
-  convertToLarkTables,
-  unescapePipes,
-  splitInlineBullets,
-  boldTableHeaders,
-} from "feishu-custom";
-
-// Full pipeline (no upload)
-const { text } = normalizeMarkdown(rawMarkdown);
-const preprocessed = preprocessMarkdown(text);
-const withTables = convertToLarkTables(preprocessed);
-const final = splitInlineBullets(unescapePipes(withTables));
-```
-
-### Modules
-
-| Module | Description |
-|--------|-------------|
-| `normalize` | HTML→md, table separators, heading numbers, escaped pipes |
-| `preprocess` | Blue number prefix, heading `{color}` cleanup |
-| `lark-table` | Markdown tables → `<lark-table>` XML |
-| `headings` | Chinese ordinal normalization, duplicate fix |
-| `highlight` | Keyword extraction, batch processing, apply |
-| `chunked` | Large doc splitting |
-| `patch` | Heading background block-level PATCH |
-| `verify` | Fetch-back regression checks |
-| `cli` | Lark CLI wrapper (`lark-cli` subprocess) |
-| `analyze` | Document type classification |
-
 ## Pipeline
 
 ```
-Source → Normalize → Analyze → Lint → Preprocess → Lark-table → Unescape → Split → Upload → Patch → Verify
+Source → Normalize → Analyze → Lint → Preprocess → Split → Highlight
+     → Bold Headers → Lark-table → Unescape → Upload → Patch → Verify
 ```
 
-1. **Normalize** — clean markdown (HTML tags, table separators, heading numbers)
+1. **Normalize** — `<p>`/`<ul>`/`<li>`/`<strong>`/`<a>` → clean Markdown
 2. **Analyze** — classify document type
-3. **Preprocess** — blue numbering, attribute cleanup
-4. **Lark-table** — convert markdown tables to `<lark-table>` XML
-5. **Unescape** — `\|` → `|` inside lark-table cells
-6. **Upload** — create doc via `lark-cli`
-7. **Patch** — heading background colors via API
-8. **Verify** — fetch-back regression testing
+3. **Preprocess** — heading numbering, strip attributes
+4. **Split** — oversized sections (>40KB) into chunks
+5. **Highlight** — apply LLM-selected keywords as `<text color="red">`
+6. **Bold Headers** — table header cells wrapped in `**`
+7. **Lark-table** — convert markdown tables to `<lark-table>` XML
+8. **Upload** — create doc via chunked API
+9. **Patch** — heading background colors
+10. **Verify** — fetch-back checks
 
 ## Tests
 
 ```bash
-# Dry-run tests (62 checks, no API)
+# Dry-run tests (73 checks, no API)
 pnpm test
 
 # Upload tests (17 checks, creates real doc)
 pnpm run test:upload
 ```
 
-Test fixture covers: headings, inline rich text, lists, callouts, code/equations, HTML→markdown, simple/strict/HTML/RW tables, Chinese ordinals, escaped pipes, grid, edge cases, highlight tags.
+## Architecture
+
+```
+src/
+├── pipeline.ts    Main orchestration
+├── cli.ts         Lark CLI auth/API wrapper
+├── analyze.ts     Document classification
+├── normalize.ts   HTML→Markdown cleanup
+├── preprocess.ts  Heading numbering, strip-title
+├── lark-table.ts  Table → XML conversion, column width algorithm
+├── patch.ts       Heading background PATCH
+├── verify.ts      Fetch-back regression checks
+└── highlight.ts   Keyword-based highlighting
+```
 
 ## License
 

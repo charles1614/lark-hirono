@@ -126,8 +126,8 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   result = result.replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
   result = result.replace(/<\/?ul>/gi, "");
   result = result.replace(/<\/?ol>/gi, "");
-  result = result.replace(/<li>/gi, " __BULLET__ ");
-  result = result.replace(/<\/li>/gi, "");
+  result = result.replace(/<li>/gi, "- ");
+  result = result.replace(/<\/li>/gi, "\n");
   result = result.replace(/<\/?p>/gi, "");
   result = result.replace(/<\/?strong>/gi, "**");
   result = result.replace(/<\/?em>/gi, "*");

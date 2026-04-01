@@ -43,8 +43,7 @@ function pct(arr: number[], p: number): number {
  *    - >4 rows: P70 (avoids outliers)
  * 2. Convert to px: chars × 2, clamped [80, 600].
  * 3. Short tables: expand to 820 proportionally.
- * 4. Long tables: content-driven, per-column cap prevents any one column
- *    from becoming unreasonable, total width is whatever it is.
+ * 4. Long tables: scale down to 1500 total if exceeds.
  */
 function computeColWidths(headerCells: string[], dataRows: string[][]): number[] {
   const colCount = headerCells.length;
@@ -128,9 +127,26 @@ export function convertToLarkTables(md: string): string {
           } else {
             result.push("    <lark-td>");
             const subLines = processed.split("\n");
-            if (subLines.some(sl => /^[-*+]\s/.test(sl.trim()) || /^\d+\.\s/.test(sl.trim()))) {
+            // Detect bullet items: `- item`, `__BULLET__ item`, `**__BULLET__** item`, etc.
+            const hasBullets = subLines.some(sl => {
+              const t = sl.trim();
+              return /^[-*+]\s/.test(t)
+                || /__BULLET__/.test(t);
+            });
+            if (hasBullets) {
               for (const sl of subLines) {
-                const trimmed = sl.trim();
+                let trimmed = sl.trim();
+                // Convert __BULLET__ (with optional ** wrapping) to proper `-`
+                trimmed = trimmed.replace(/\*\*__BULLET__\*\*/g, "-")
+                                 .replace(/__BULLET__/g, "-");
+                // Ensure proper `- ` bullet format
+                if (/^-/.test(trimmed) && !/^- /.test(trimmed)) {
+                  trimmed = "- " + trimmed.slice(1);
+                }
+                // Ensure numbered list format
+                if (/^\d+\.?/.test(trimmed) && !/^\d+\.\s/.test(trimmed)) {
+                  trimmed = trimmed.replace(/^(\d+)\.?\s*/, "$1. ");
+                }
                 if (trimmed) result.push(`      ${trimmed}`);
               }
             } else {

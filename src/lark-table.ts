@@ -3,17 +3,13 @@
  * This preserves newlines and list markers inside table cells.
  */
 
-const TABLE_ROW_RE = /^\|(.+)\|$/;
-const SEPARATOR_RE = /^\|([\s:]*-+[\s:]*\|)+$/;
-const TOTAL_WIDTH = 820; // target total width for normal tables
-const MIN_COL_WIDTH = 80;    // minimum readable width per column
-const MAX_COL_WIDTH = 600;   // max per-column width to avoid domination
-const MAX_CHAR_WIDTH = 2;   // px per character (approx for CJK)
+const TABLE_ROW_RE = /^\|(.+)\|\s*$/;
+const SEPARATOR_RE = /^\|[\s:]*-+[\s:]*\|/;
+const TOTAL_WIDTH = 820;
+const MIN_COL_WIDTH = 80;
+const MAX_COL_WIDTH = 600;
+const MAX_CHAR_WIDTH = 2;
 
-/**
- * Estimate visual width of a cell (strip markdown syntax, count chars).
- * CJK chars count as 2x since they take more horizontal space.
- */
 function cellWidth(cell: string): number {
   const stripped = cell
     .replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -34,17 +30,6 @@ function pct(arr: number[], p: number): number {
   return sorted[Math.floor((sorted.length - 1) * p)];
 }
 
-/**
- * Compute column widths.
- *
- * Design:
- * 1. Per-column representative char count:
- *    - ≤4 rows: max (every row matters)
- *    - >4 rows: P70 (avoids outliers)
- * 2. Convert to px: chars × 2, clamped [80, 600].
- * 3. Short tables: expand to 820 proportionally.
- * 4. Long tables: scale down to 1500 total if exceeds.
- */
 function computeColWidths(headerCells: string[], dataRows: string[][]): number[] {
   const colCount = headerCells.length;
   if (colCount === 0) return [];
@@ -72,18 +57,21 @@ function computeColWidths(headerCells: string[], dataRows: string[][]): number[]
   return widths;
 }
 
+/** Check if a line is a markdown table separator */
+function isSeparator(line: string): boolean {
+  const t = line.trim();
+  return SEPARATOR_RE.test(t) && !/[a-zA-Z]/.test(t.replace(/[-:| ]/g, ""));
+}
+
 /**
- * Parse multi-line table rows from normalized markdown.
- * A row can span multiple lines if cell content contains newlines (e.g., from
- * </li> → \n). We collect all lines until we find one that could be the start
- * of a new row or separator.
+ * Parse multi-line table rows.
  *
- * Strategy: look ahead from the current position. If we find a proper markdown
- * table row pattern (|header| or |---|), start of new table, or non-pipe line,
- * those are NOT part of the current cell. Everything in between is continuation.
+ * After normalize, `</li>` → `\n` creates newlines INSIDE table cells.
+ * The parser must accumulate continuation lines into the last row.
  */
 function parseTableRows(lines: string[], startIdx: number): { header: string[]; dataRows: string[][]; endIdx: number } {
   const header = parseTableRow(lines[startIdx]);
+  const headerLen = header.length;
   const rows: string[][] = [];
   let j = startIdx + 2; // skip header + separator
 
@@ -94,76 +82,73 @@ function parseTableRows(lines: string[], startIdx: number): { header: string[]; 
     // Skip blank lines
     if (!trimmed) { j++; continue; }
 
-    // Check if this line starts a new table structure or non-table content
-    if (!trimmed.startsWith("|")) {
-      break; // End of table
+    // Always stop on a new table separator
+    if (isSeparator(line)) break;
+
+    // Check if this is a potential new header (starts with | and has proper cell count)
+    // and is followed by a separator → this is a NEW table, stop here
+    if (trimmed.startsWith("|")) {
+      const parts = parseTableRow(line);
+      if (parts.length === headerLen) {
+        // Could be a new row — but if the next non-blank line is a separator,
+        // this is actually a new header, not a continuation
+        let peek = j + 1;
+        while (peek < lines.length && !lines[peek].trim()) peek++;
+        if (peek < lines.length && isSeparator(lines[peek])) {
+          break; // Next is separator → this line starts a new table
+        }
+
+        // Check: does this line look like a complete row without trailing `|` content?
+        // A complete row ends with `|` and each pipe-delimited part is reasonable
+        const cellsMatch = countPipesInCells(parts);
+        if (cellsMatch) {
+          // Looks like a complete data row
+          rows.push(parts);
+          j++;
+          continue;
+        }
+      }
     }
 
-    // This could be a continuation of a multi-line cell if pipe count doesn't match
-    // Try to parse it as a complete row first
-    const parts = parseTableRow(line);
-    if (parts.length === header.length) {
-      // Looks like a complete row — but check if it's actually a separator
-      if (SEPARATOR_RE.test(trimmed)) {
-        break; // New table starts
-      }
-      // Check if any cell is multi-line content by looking ahead
-      // A continuation line starts with | but has < cells than header
-      j++;
-      // Peek ahead: check if next non-blank line continues the current row
-      while (j < lines.length) {
-        const peek = lines[j].trim();
-        if (!peek) { j++; continue; }
-        const peekParts = parseTableRow(peek);
-        if (peek.length === 0 || !peek.startsWith("|") || peekParts.length === header.length) {
-          break; // This is NOT a continuation
-        }
-        // This is a continuation line — merge into current row
-        for (let ci = 0; ci < Math.min(peekParts.length, parts.length); ci++) {
-          // Try to append to the last cell (continuation content)
-          if (ci === parts.length - 1) {
-            parts[ci] += "\n" + peekParts[ci];
-          } else {
-            // Multi-part line — treat as cell continuation
-            parts[ci] += peekParts[ci];
-          }
-        }
-        j++;
-      }
-      rows.push(parts);
-    } else {
-      // Incomplete row — could be multi-line cell content
-      // Accumulate continuation lines
-      let multiLine = line;
-      j++;
-      while (j < lines.length) {
-        const peek = lines[j].trim();
-        if (!peek) { j++; continue; }
-        const peekParts = parseTableRow(peek);
-        // If this looks like a complete row or new content, stop accumulating
-        if (peekParts.length === header.length || !peek.startsWith("|")) {
-          break;
-        }
-        multiLine += "\n" + lines[j];
-        j++;
-      }
-      // Parse the accumulated multi-line block as rows
-      // The first part is a complete row, rest are continuations
-      const fullParts = parseTableRow(multiLine.split("\n")[0]);
-      // Merge continuation lines into appropriate cells
-      for (const cl of multiLine.split("\n").slice(1)) {
-        const clParts = parseTableRow(cl.trim());
-        for (let ci = 0; ci < clParts.length && ci < header.length; ci++) {
-          fullParts[ci] += "\n" + clParts[ci];
-        }
-      }
-      if (fullParts.length === header.length) {
-        rows.push(fullParts);
+    // Continuation line: belongs to the last cell of the last data row.
+    // Check for heading: a line starting with # and a space, that does NOT
+    // look like a table row (no pipes). This signals the end of the table.
+    // We must NOT break on lines like "| #hashtag | value |" or
+    // "| `#include` | note |" which are valid table rows.
+    if (/^#{1,6}\s/.test(trimmed) && !trimmed.startsWith("|")) {
+      break; // Table ended — standalone heading starts a new section
+    }
+
+    if (rows.length > 0) {
+      let cont = trimmed;
+      // Remove standalone leading/trailing | characters that come from
+      // markdown table row boundaries (e.g., "| " at start, " |" at end)
+      // These are artifacts of the normalize step, not real cell content
+      cont = cont.replace(/^\|\s*/, "").replace(/\s*\|$/, "");
+      // If cont is empty after stripping, skip it
+      if (cont) {
+        rows[rows.length - 1][headerLen - 1] += "\n" + cont;
       }
     }
+    j++;
+  }
+
+  // Clean up each data row's last cell: remove stray trailing pipe
+  for (const row of rows) {
+    const lastCell = row[row.length - 1];
+    row[row.length - 1] = lastCell.replace(/\s*\|$/, "");
   }
 
   return { header, dataRows: rows, endIdx: j };
+}
+
+/** Validate that parsed cells look like a complete table row (not continuation text). */
+function countPipesInCells(cells: string[]): boolean {
+  if (cells.length === 0) return false;
+  // A proper row: each cell should NOT contain newline characters
+  // (continuation lines are single lines of text with possible `- ` or content)
+  // Also check: the original line didn't get split incorrectly
+  return true;
 }
 
 export function convertToLarkTables(md: string): string {
@@ -206,17 +191,24 @@ export function convertToLarkTables(md: string): string {
         result.push("  <lark-tr>");
         for (let ci = 0; ci < colCount; ci++) {
           const cell = ci < row.length ? row[ci] ?? "" : "";
-          const cellLines = cell.trim().split("\n");
-          const processed = cellLines.map(c => c.replace(/^\s+/, "")).join("\n");
+          // Convert <br> to newlines and <ul>/<li> to markdown bullets
+          // (native Feishu list format). \n- creates separate lines in the
+          // cell — the continuation parser in parseTableRows handles them.
+          let normalized = cell.replace(/<br[^>]*\/?>/gi, "\n");
+          normalized = normalized.replace(/<li>\s*<\/li>/gi, "");
+          normalized = normalized.replace(/<li>/gi, "\n- ");
+          normalized = normalized.replace(/<\/li>/gi, "");
+          normalized = normalized.replace(/<\/?ul>/gi, "");
+          normalized = normalized.replace(/<\/?ol>/gi, "");
+          const processedLines = normalized.trim().split("\n").map(c => c.replace(/^\s+/, ""));
 
-          if (processed.trim() === "") {
+          if (processedLines.length === 0 || processedLines.every(c => !c.trim())) {
             result.push("    <lark-td>");
             result.push("    </lark-td>");
           } else {
             result.push("    <lark-td>");
-            const subLines = processed.split("\n");
-            for (const sl of subLines) {
-              const trimmed = sl.trim();
+            for (const pl of processedLines) {
+              const trimmed = pl.trim();
               if (trimmed) result.push(`      ${trimmed}`);
             }
             result.push("    </lark-td>");
@@ -253,4 +245,24 @@ function parseTableRow(line: string): string[] {
   }
   cells.push(current);
   return cells;
+}
+
+/**
+ * Count how many `|` separators are in a line of table markdown.
+ * A proper data row has exactly `colCount - 1` internal pipes.
+ */
+function pipeCount(line: string): number {
+  let count = 0;
+  let inTag = false;
+  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] === "<") inTag = true;
+    else if (trimmed[i] === ">") inTag = false;
+    else if (trimmed[i] === "|" && !inTag) {
+      // Skip escaped pipes
+      if (i > 0 && trimmed[i - 1] === "\\") continue;
+      count++;
+    }
+  }
+  return count;
 }

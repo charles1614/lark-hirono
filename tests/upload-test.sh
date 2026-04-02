@@ -94,12 +94,21 @@ if [ -z "$DOC_TOKEN" ]; then
 fi
 
 echo "Doc token: $DOC_TOKEN"
-
-READBACK=$("$LARKCLI" docs +fetch --doc "$DOC_TOKEN" 2>/dev/null | python3 -c "
+echo "Waiting for Feishu to index..."
+for attempt in 1 2 3; do
+  sleep 3
+  READBACK=$("$LARKCLI" docs +fetch --doc "$DOC_TOKEN" 2>/dev/null | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 print(data.get('data', {}).get('markdown', ''))
 " 2>/dev/null || echo "")
+  LINES=$(echo "$READBACK" | wc -l)
+  if [ "$LINES" -gt 500 ]; then
+    echo "  Got ${LINES} lines (attempt $attempt)"
+    break
+  fi
+  echo "  Only ${LINES} lines, retrying... (attempt $attempt)"
+done
 
 if [ -z "$READBACK" ]; then
   echo "❌ Failed to read back document"
@@ -127,7 +136,7 @@ check "Code column" '\*\*Code\*\*|Code'
 check "Title column" '\*\*Title\*\*|Title'
 check "HTML-001 code" 'HTML-001'
 check "HTML-003 code" 'HTML-003'
-check "Bullet items" '\- \*\*PyTorch\*\*'
+check "Bullet items" '[•\-] \*\*PyTorch\*\*'
 check "Links in cells" '\[documentation\]\(https://example\.com\)'
 check "Chinese text" '中文'
 

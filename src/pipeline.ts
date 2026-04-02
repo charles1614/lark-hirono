@@ -188,15 +188,20 @@ async function main() {
       const keywords: KeywordEntry[] = JSON.parse(readFileSync(highlightKeywordFile, "utf-8"));
       log(args.verbose, `Highlight: loading ${keywords.length} keywords`);
       const { markdown: highlighted } = highlightApply(md, keywords);
-      md = highlighted.replace(/\{red:\*\*([^*]+)\*\*\}/g, '<text color="red">$1</text>');
-      const redCount = (md.match(/<text color="red">/g) || []).length;
-      log(args.verbose, `Highlight: applied, ${redCount} red highlights in markdown`);
+      md = highlighted;
+      log(args.verbose, `Highlight: applied keywords`);
     } else {
       const batchPaths = saveBatches(batches, args.input);
       log(args.verbose, `Highlight: saved ${batchPaths.length} batch file(s) for LLM selection`);
       log(args.verbose, `Highlight: waiting for ${highlightKeywordFile}`);
     }
   }
+
+  // Convert {red:**keyword**} → <text color="red">keyword</text>
+  // This runs regardless of --no-highlight so fixture tags always render.
+  md = md.replace(/\{red:\*\*([^*]+)\*\*\}/g, '<text color="red">$1</text>');
+  const redCount = (md.match(/<text color="red">/g) || []).length;
+  if (redCount > 0) log(args.verbose, `Red highlights: ${redCount}`);
 
   // 7. Convert markdown tables to lark-table XML
   md = boldTableHeaders(md);

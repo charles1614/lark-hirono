@@ -34,16 +34,14 @@ export function normalizeHeadingNumbers(md: string): string {
     const hashes = hm[1];
     let content = hm[2];
 
-    // Chinese ordinal: "一、Title" → "1. Title"
+    // Chinese ordinal: "一、Title" → assign next global number
     const cnMatch = content.match(
       /^([一二三四五六七八九十]+|[甲乙丙丁戊己庚辛壬癸])、\s*(.+)/
     );
     if (cnMatch) {
-      const num = CHINESE_NUMS[cnMatch[1]] ?? "?";
-      const normalized = `${num}.`;
+      h2Num++;
+      const normalized = `${h2Num}.`;
       seen.add(normalized);
-      const val = parseInt(num);
-      if (!isNaN(val)) h2Num = Math.max(h2Num, val);
       out.push(`${hashes} ${normalized} ${cnMatch[2]}`);
       continue;
     }

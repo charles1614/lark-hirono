@@ -17,6 +17,37 @@ export interface NormalizationReport {
 // ─── Normalize ──────────────────────────────────────────────────────────
 
 /**
+ * Apply a transformation to segments outside markdown table rows.
+ * Table rows (lines starting and ending with |) are preserved as-is
+ * so lark-table can process their HTML content later.
+ */
+function processOutsideTableCells(md: string, fn: (s: string) => string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let outside: string[] = [];
+
+  const flush = () => {
+    if (outside.length > 0) {
+      const transformed = fn(outside.join("\n"));
+      out.push(...transformed.split("\n"));
+      outside = [];
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^\|.*\|$/.test(trimmed) || /^\|[\s:]*-+[\s:]*\|/.test(trimmed)) {
+      flush();
+      out.push(line);
+    } else {
+      outside.push(line);
+    }
+  }
+  flush();
+  return out.join("\n");
+}
+
+/**
  * Normalize table separator rows.
  * Feishu requires `|---|---|` but users may write `| --- | --- |`.
  */
@@ -121,13 +152,28 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   // 3. Detect HTML presence
   report.htmlPresent = /<[^>]+>/.test(result);
 
-  // 4. Clean HTML tags (lark-table conversion preserves them in cells)
+  // 4. Clean HTML tags.
+  //    Table cells are handled separately: <li>/<ul>/<br> inside |...| rows
+  //    are preserved for lark-table cell processing (which converts them to
+  //    inline format so newlines don't break table row parsing).
+  // 4a. <br> → newline (outside tables)
+  result = processOutsideTableCells(result, (segment) => {
+    segment = segment.replace(/<br\s*\/?>/gi, "\n");
+    // Strip empty <li></li>
+    segment = segment.replace(/<li>\s*<\/li>/gi, "");
+    // Convert <li> to markdown bullets (native Feishu list)
+    segment = segment.replace(/<li>/gi, "\n- ");
+    segment = segment.replace(/<\/li>/gi, "");
+    segment = segment.replace(/<\/?ul>/gi, "");
+    segment = segment.replace(/<\/?ol>/gi, "");
+    return segment;
+  });
+  // 4b. Paragraphs and links (global — safe everywhere)
   result = result.replace(/<p>(.*?)<\/p>/gis, "$1 ");
   result = result.replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
-  result = result.replace(/<\/?ul>/gi, "");
-  result = result.replace(/<\/?ol>/gi, "");
-  result = result.replace(/<li>/gi, "- ");
-  result = result.replace(/<\/li>/gi, " ");
+  // Collapse excess blank lines
+  result = result.replace(/\n{3,}/g, "\n\n");
+  // 4c. Remaining inline HTML
   result = result.replace(/<\/?p>/gi, "");
   result = result.replace(/<\/?strong>/gi, "**");
   result = result.replace(/<\/?em>/gi, "*");

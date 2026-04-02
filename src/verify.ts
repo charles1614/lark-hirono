@@ -20,6 +20,7 @@ export interface VerifyReport {
 
   // Sections
   headingCount: number;
+  headingRootCount: number; // headings at root level (not inside tables)
   headingsWithBg: number;
   headingBgCoverage: number;
 
@@ -32,8 +33,12 @@ export interface VerifyReport {
   // Bold headers
   boldHeaderCount: number;
 
-  // Issues
+  // Bullets
+  bulletCount: number;
   emptyBulletCount: number;
+
+  // Issues
+  residualHtmlTags: string[];
 
   // Overall
   checks: { name: string; pass: boolean; detail: string }[];
@@ -42,6 +47,9 @@ export interface VerifyReport {
 
 // ─── Verify ─────────────────────────────────────────────────────────────
 
+/** HTML tag patterns that should never appear in rendered doc blocks. */
+const RESIDUAL_HTML_RE = /<\/?(?:p|ul|ol|li|strong|b|em|i)\b[^>]*>/gi;
+
 export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
   const blocks = cli.getBlocks(docId);
 
@@ -49,20 +57,31 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     totalBlocks: blocks.length,
     rootChildren: 0,
     headingCount: 0,
+    headingRootCount: 0,
     headingsWithBg: 0,
     headingBgCoverage: 0,
     tableCount: 0,
     redHighlightCount: 0,
     boldHeaderCount: 0,
+    bulletCount: 0,
     emptyBulletCount: 0,
+    residualHtmlTags: [],
     checks: [],
     ok: false,
   };
 
-  // Root children count
+  // Root children — collect IDs for root-level check
   const root = blocks.find((b) => b.block_type === 1);
-  if (root) {
-    report.rootChildren = ((root as any).children || []).length;
+  const rootChildIds: string[] = root ? ((root as any).children || []) : [];
+  report.rootChildren = rootChildIds.length;
+
+  // Build a set of block IDs that are table children (for heading-in-table check)
+  const tableChildIds = new Set<string>();
+  for (const b of blocks) {
+    if (b.block_type === 31) {
+      const children = (b as any).children || [];
+      for (const cid of children) tableChildIds.add(cid);
+    }
   }
 
   for (const b of blocks) {
@@ -71,6 +90,9 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     // Headings (type 3-11)
     if (bt >= 3 && bt <= 11) {
       report.headingCount++;
+      if (rootChildIds.includes(b.block_id) && !tableChildIds.has(b.block_id)) {
+        report.headingRootCount++;
+      }
       const key = `heading${bt - 2}`;
       const v = (b as any)[key] || {};
       const bg = v.style?.background_color;
@@ -80,23 +102,36 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     // Tables (type 31)
     if (bt === 31) report.tableCount++;
 
-    // Empty bullets (type 12)
+    // Bullets (type 12)
     if (bt === 12) {
+      report.bulletCount++;
       const els = (b as any).bullet?.elements || [];
       const text = els.map((e: any) => e.text_run?.content || "").join("").trim();
       if (!text) report.emptyBulletCount++;
     }
 
-    // Text blocks (type 2) - check for red highlights and bold headers
+    // Text blocks (type 2) — check red highlights, bold headers, residual HTML
     if (bt === 2) {
       const els = (b as any).text?.elements || [];
       for (const e of els) {
+        const content: string = e.text_run?.content || "";
         const style = e.text_run?.text_element_style || {};
+
         if (style.text_color === 1) report.redHighlightCount++;
         if (style.bold) {
-          const content = (e.text_run?.content || "").trim();
-          if (["Code", "Title", "Speakers", "Company", "Industry", "Abstract", "PDF"].includes(content)) {
+          const trimmed = content.trim();
+          if (["Code", "Title", "Speakers", "Company", "Industry", "Abstract", "PDF"].includes(trimmed)) {
             report.boldHeaderCount++;
+          }
+        }
+
+        // Check for residual HTML tags in rendered text
+        const htmlMatches = content.match(RESIDUAL_HTML_RE);
+        if (htmlMatches) {
+          for (const tag of htmlMatches) {
+            if (!report.residualHtmlTags.includes(tag)) {
+              report.residualHtmlTags.push(tag);
+            }
           }
         }
       }
@@ -112,14 +147,9 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
   // Build checks
   report.checks = [
     {
-      name: "No empty bullets",
-      pass: report.emptyBulletCount <= 3,
-      detail: `${report.emptyBulletCount} empty bullets`,
-    },
-    {
-      name: "Headings present",
-      pass: report.headingCount > 0,
-      detail: `${report.headingCount} headings`,
+      name: "Headings at root level",
+      pass: report.headingRootCount >= 10,
+      detail: `${report.headingRootCount}/${report.headingCount} root-level`,
     },
     {
       name: "Heading bg coverage",
@@ -132,14 +162,31 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
       detail: `${report.tableCount} tables`,
     },
     {
-      name: "Red highlights present",
-      pass: report.redHighlightCount > 0,
+      name: "Native bullets",
+      pass: report.bulletCount >= 5,
+      detail: `${report.bulletCount} bullets`,
+    },
+    {
+      name: "No empty bullets",
+      pass: report.emptyBulletCount <= 3,
+      detail: `${report.emptyBulletCount} empty bullets`,
+    },
+    {
+      name: "Red highlights",
+      pass: report.redHighlightCount >= 2,
       detail: `${report.redHighlightCount} highlights`,
     },
     {
-      name: "Bold headers present",
+      name: "Bold headers",
       pass: report.boldHeaderCount >= 7,
       detail: `${report.boldHeaderCount} bold headers`,
+    },
+    {
+      name: "No residual HTML",
+      pass: report.residualHtmlTags.length === 0,
+      detail: report.residualHtmlTags.length === 0
+        ? "clean"
+        : `found: ${report.residualHtmlTags.join(", ")}`,
     },
   ];
 
@@ -153,11 +200,12 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
 export function formatReport(report: VerifyReport): string {
   const lines = [
     `Blocks: ${report.totalBlocks} (${report.rootChildren} root children)`,
-    `Headings: ${report.headingsWithBg}/${report.headingCount} with bg (${report.headingBgCoverage}%)`,
+    `Headings: ${report.headingRootCount}/${report.headingCount} root-level (${report.headingBgCoverage}% bg)`,
     `Tables: ${report.tableCount}`,
+    `Bullets: ${report.bulletCount} (${report.emptyBulletCount} empty)`,
     `Red highlights: ${report.redHighlightCount}`,
     `Bold headers: ${report.boldHeaderCount}`,
-    `Empty bullets: ${report.emptyBulletCount}`,
+    `Residual HTML: ${report.residualHtmlTags.length === 0 ? "none" : report.residualHtmlTags.join(", ")}`,
     ``,
     ...report.checks.map((c) => `${c.pass ? "✅" : "❌"} ${c.name}: ${c.detail}`),
     ``,

@@ -194,7 +194,12 @@ export function convertToLarkTables(md: string): string {
           // Convert <br> to newlines and <ul>/<li> to markdown bullets
           // (native Feishu list format). \n- creates separate lines in the
           // cell — the continuation parser in parseTableRows handles them.
-          let normalized = cell.replace(/<br[^>]*\/?>/gi, "\n");
+          let normalized = cell.replace(/<br[^>]*\/?>/gi, "\n\n");
+          // Paragraph breaks in table cells: use \n\n to create empty lines
+          // which Feishu markdown renders as paragraph breaks.
+          normalized = normalized.replace(/<\/p>\s*<p>/gi, "\n\n");
+          normalized = normalized.replace(/<\/p>/gi, "");
+          normalized = normalized.replace(/<p>/gi, "");
           normalized = normalized.replace(/<li>\s*<\/li>/gi, "");
           normalized = normalized.replace(/<li>/gi, "\n- ");
           normalized = normalized.replace(/<\/li>/gi, "");
@@ -202,14 +207,14 @@ export function convertToLarkTables(md: string): string {
           normalized = normalized.replace(/<\/?ol>/gi, "");
           const processedLines = normalized.trim().split("\n").map(c => c.replace(/^\s+/, ""));
 
-          if (processedLines.length === 0 || processedLines.every(c => !c.trim())) {
+          if (processedLines.length === 0) {
             result.push("    <lark-td>");
             result.push("    </lark-td>");
           } else {
             result.push("    <lark-td>");
             for (const pl of processedLines) {
-              const trimmed = pl.trim();
-              if (trimmed) result.push(`      ${trimmed}`);
+              // Preserve paragraph breaks: keep empty lines
+              result.push(`      ${pl}`);
             }
             result.push("    </lark-td>");
           }

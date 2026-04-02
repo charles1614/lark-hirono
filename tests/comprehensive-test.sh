@@ -171,6 +171,19 @@ check_not "No <em>" '<em>'
 check_not "No <i>" '<i>'
 
 echo ""
+echo "=== 16. Paragraph in Cells (newline regression) ==="
+S16=$(section_content 'color="blue">16 ' 'color="blue">15 ')
+check_not "16: No <p> in output" '<p>'
+check_not "16: No </p> in output" '</p>'
+if echo "$S16" | grep -qF 'First paragraph'; then echo "  ✅ 16: P-001 first paragraph preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 first paragraph MISSING"; FAIL=$((FAIL+1)); fi
+if echo "$S16" | grep -qF 'Second paragraph'; then echo "  ✅ 16: P-001 second paragraph preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 second paragraph MISSING"; FAIL=$((FAIL+1)); fi
+if echo "$S16" | grep -qF 'Main abstract text'; then echo "  ✅ 16: P-004 abstract text preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-004 abstract text MISSING"; FAIL=$((FAIL+1)); fi
+if echo "$S16" | grep -qF '**Important:**'; then echo "  ✅ 16: P-004 Important bold preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-004 Important bold MISSING"; FAIL=$((FAIL+1)); fi
+# P-001: two paragraphs should be on separate lines (not space-joined)
+# With empty line separator: grep -A2 catches it
+if echo "$S16" | grep -A2 'First paragraph' | grep -q 'Second paragraph'; then echo "  ✅ 16: P-001 paragraphs on separate lines"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 paragraphs NOT on separate lines"; FAIL=$((FAIL+1)); fi
+
+echo ""
 echo "========================================="
 echo "Results: $PASS passed, $FAIL failed"
 echo "========================================="

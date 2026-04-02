@@ -407,6 +407,16 @@ These cases come from actual GTC catalog markdown: `<ul><li>` inside table cells
 | H-009 | empty li | <ul><li>Has content</li><li></li></ul> |
 | H-010 | li with code | <ul><li>First with `inline code`</li><li>Second plain</li></ul> |
 
+## 16 Paragraph in Cells (regression: <p> must produce newlines, not spaces)
+
+| Code | Title | Abstract |
+|---|---|---|
+| P-001 | Two paragraphs | <p>First paragraph.</p> <p>Second paragraph.</p> |
+| P-002 | Three paragraphs | <p>Paragraph one.</p> <p>Paragraph two.</p> <p>Paragraph three.</p> |
+| P-003 | Paragraph with bold | <p>Intro with <strong>bold</strong>.</p> <p>Detail with <b>b tag</b>.</p> |
+| P-004 | Paragraph before Important | <p>Main abstract text.</p> <p><strong>Important:</strong> session details here.</p> |
+| P-005 | Paragraph with list | <p>Prerequisites:</p> <ul><li><strong>PyTorch</strong></li><li>CUDA 12</li></ul> |
+
 ## 15 Verification Targets
 
 - Heading numbering should remain visible.

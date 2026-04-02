@@ -156,9 +156,15 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   //    Table cells are handled separately: <li>/<ul>/<br> inside |...| rows
   //    are preserved for lark-table cell processing (which converts them to
   //    inline format so newlines don't break table row parsing).
-  // 4a. <br> → newline (outside tables)
+  // 4a. <br>/<p> → newline (outside tables)
+  //     <p> is a block-level element, should produce newlines like <br>.
+  //     Inside table cells, <p> is preserved for lark-table cell processing.
   result = processOutsideTableCells(result, (segment) => {
     segment = segment.replace(/<br\s*\/?>/gi, "\n");
+    // <p>content</p> → content + newline (block-level → line break)
+    segment = segment.replace(/<p>(.*?)<\/p>/gis, "$1\n");
+    // Strip any remaining stray <p> or </p>
+    segment = segment.replace(/<\/?p>/gi, "");
     // Strip empty <li></li>
     segment = segment.replace(/<li>\s*<\/li>/gi, "");
     // Convert <li> to markdown bullets (native Feishu list)
@@ -168,13 +174,12 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
     segment = segment.replace(/<\/?ol>/gi, "");
     return segment;
   });
-  // 4b. Paragraphs and links (global — safe everywhere)
-  result = result.replace(/<p>(.*?)<\/p>/gis, "$1 ");
+  // 4b. Links (global — safe everywhere).
+  //     <p>/<\/p> are preserved inside table cells — lark-table.ts handles them.
   result = result.replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
-  // Collapse excess blank lines
-  result = result.replace(/\n{3,}/g, "\n\n");
-  // 4c. Remaining inline HTML
-  result = result.replace(/<\/?p>/gi, "");
+  // Collapse excess blank lines (3+ = 2 is too many; allow paragraph breaks)
+  result = result.replace(/\n{4,}/g, "\n\n");
+  // 4d. Remaining inline HTML
   result = result.replace(/<\/?strong>/gi, "**");
   result = result.replace(/<\/?em>/gi, "*");
   result = result.replace(/<\/?b>/gi, "**");

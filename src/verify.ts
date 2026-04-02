@@ -183,6 +183,9 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
   cc.blueNumberedHeading = /color="blue">/.test(md);
   // Chinese ordinals should not appear as heading prefixes (## 一、Title)
   cc.chineseOrdinalNormalized = !/^##\s+[一二三四五六七八九十]+、/m.test(md);
+  // Paragraph newlines in cells: after normalize, </p><p> should produce
+  // separate lines in table cells (e.g. "Important:" on its own line)
+  cc.paragraphsSeparated = !/<\/?p>\s*<strong>Important/i.test(md);
 
   // ── Build checks ───────────────────────────────────────────────────
 

@@ -184,6 +184,19 @@ if echo "$S16" | grep -qF '**Important:**'; then echo "  ✅ 16: P-004 Important
 if echo "$S16" | grep -A2 'First paragraph' | grep -q 'Second paragraph'; then echo "  ✅ 16: P-001 paragraphs on separate lines"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 paragraphs NOT on separate lines"; FAIL=$((FAIL+1)); fi
 
 echo ""
+echo "=== 17. Escaped Pipe in Cells (regression) ==="
+S17=$(section_content 'color="blue">17 ' 'color="blue">15 ')
+if echo "$S17" | grep -qF 'rows="7"'; then echo "  ✅ 17: Section 17 rows=7"; PASS=$((PASS+1)); else echo "  ❌ 17: Section 17 rows WRONG"; FAIL=$((FAIL+1)); fi
+if echo "$S17" | grep -qF 'cols="3"'; then echo "  ✅ 17: Section 17 cols=3"; PASS=$((PASS+1)); else echo "  ❌ 17: Section 17 cols WRONG"; FAIL=$((FAIL+1)); fi
+for code in EP-001 EP-002 EP-003 EP-004 EP-005 EP-006; do
+  if echo "$S17" | grep -qF "$code"; then echo "  ✅ 17: $code in table"; PASS=$((PASS+1)); else echo "  ❌ 17: $code MISSING"; FAIL=$((FAIL+1)); fi
+done
+if echo "$S17" | grep -qF 'Install Guide | Notice'; then echo "  ✅ 17: EP-001 escaped pipe in link preserved"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-001 escaped pipe broken"; FAIL=$((FAIL+1)); fi
+if echo "$S17" | grep -qF 'pipe in cell'; then echo "  ✅ 17: EP-005 escaped pipe preserved in cell"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-005 escaped pipe broken"; FAIL=$((FAIL+1)); fi
+if echo "$S17" | grep -qF 'grep | sort | uniq'; then echo "  ✅ 17: EP-002 escaped pipes in code preserved"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-002 escaped pipes broken"; FAIL=$((FAIL+1)); fi
+if echo "$S17" | grep -qF 'Install & Demo Guide | Notice & Disclaimers'; then echo "  ✅ 17: EP-006 S82795 regression pipe in link text"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-006 S82795 regression FAILED"; FAIL=$((FAIL+1)); fi
+
+echo ""
 echo "========================================="
 echo "Results: $PASS passed, $FAIL failed"
 echo "========================================="

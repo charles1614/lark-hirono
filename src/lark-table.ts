@@ -203,6 +203,9 @@ export function convertToLarkTables(md: string): string {
           normalized = normalized.replace(/<li>\s*<\/li>/gi, "");
           normalized = normalized.replace(/<li>/gi, "\n- ");
           normalized = normalized.replace(/<\/li>/gi, "");
+          // Add newline after closing list tags before removing them
+          normalized = normalized.replace(/<\/ul>\s*/gi, "\n");
+          normalized = normalized.replace(/<\/ol>\s*/gi, "\n");
           normalized = normalized.replace(/<\/?ul>/gi, "");
           normalized = normalized.replace(/<\/?ol>/gi, "");
           const processedLines = normalized.trim().split("\n").map(c => c.replace(/^\s+/, ""));
@@ -243,7 +246,17 @@ function parseTableRow(line: string): string[] {
     if (content[i] === "<") { inTag = true; current += content[i]; }
     else if (content[i] === ">") { inTag = false; current += content[i]; }
     else if (content[i] === "|" && !inTag) {
-      if (i > 0 && content[i - 1] === "\\") { current = current.slice(0, -1) + "|"; }
+      if (i > 0 && content[i - 1] === "\\") {
+        if (i > 1 && content[i - 2] === "\\") {
+          // \\| — escaped backslash + pipe separator (split here)
+          current = current.slice(0, -1); // keep one backslash
+          cells.push(current);
+          current = "";
+        } else {
+          // \| — escaped pipe, keep in same cell
+          current = current.slice(0, -1) + "|";
+        }
+      }
       else { cells.push(current); current = ""; }
     }
     else { current += content[i]; }
@@ -264,9 +277,12 @@ function pipeCount(line: string): number {
     if (trimmed[i] === "<") inTag = true;
     else if (trimmed[i] === ">") inTag = false;
     else if (trimmed[i] === "|" && !inTag) {
-      // Skip escaped pipes
-      if (i > 0 && trimmed[i - 1] === "\\") continue;
-      count++;
+      // Skip escaped pipes (\|), but count \\| (escaped backslash + pipe)
+      if (i > 0 && trimmed[i - 1] === "\\") {
+        if (i > 1 && trimmed[i - 2] === "\\") { count++; } // \\| counts as separator
+        else { continue; } // \| is escaped pipe, skip
+      }
+      else { count++; }
     }
   }
   return count;

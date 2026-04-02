@@ -160,6 +160,13 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   //     <p> is a block-level element, should produce newlines like <br>.
   //     Inside table cells, <p> is preserved for lark-table cell processing.
   result = processOutsideTableCells(result, (segment) => {
+    // Protect inline code from HTML conversion
+    const codeSpans: string[] = [];
+    segment = segment.replace(/`[^`]+`/g, (m) => {
+      codeSpans.push(m);
+      return `\x00CODE${codeSpans.length - 1}\x00`;
+    });
+
     segment = segment.replace(/<br\s*\/?>/gi, "\n");
     // <p>content</p> → content + newline (block-level → line break)
     segment = segment.replace(/<p>(.*?)<\/p>/gis, "$1\n");
@@ -170,8 +177,15 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
     // Convert <li> to markdown bullets (native Feishu list)
     segment = segment.replace(/<li>/gi, "\n- ");
     segment = segment.replace(/<\/li>/gi, "");
+    // Add newline after closing list tags before removing them,
+    // so text following </ul> doesn't glue to the last bullet
+    segment = segment.replace(/<\/ul>\s*/gi, "\n");
+    segment = segment.replace(/<\/ol>\s*/gi, "\n");
     segment = segment.replace(/<\/?ul>/gi, "");
     segment = segment.replace(/<\/?ol>/gi, "");
+
+    // Restore inline code
+    segment = segment.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeSpans[parseInt(i)]);
     return segment;
   });
   // 4b. Links (global — safe everywhere).
@@ -179,14 +193,26 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   result = result.replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
   // Collapse excess blank lines (3+ = 2 is too many; allow paragraph breaks)
   result = result.replace(/\n{4,}/g, "\n\n");
-  // 4d. Remaining inline HTML
-  result = result.replace(/<\/?strong>/gi, "**");
-  result = result.replace(/<\/?em>/gi, "*");
-  result = result.replace(/<\/?b>/gi, "**");
-  result = result.replace(/<\/?i>/gi, "*");
-  result = result.replace(/<\/?u>/gi, "");
-  result = result.replace(/<\/?s>/gi, "~~");
-  result = result.replace(/<\?xml[^>]*>/gi, "");
+  // 4c-d. Remaining inline HTML — skip code fences and lark-table blocks
+  const blocks = result.split(/(```[\s\S]*?```|<lark-table[\s\S]*?<\/lark-table>)/g);
+  result = blocks.map(block => {
+    if (block.startsWith("```") || block.startsWith("<lark-table")) return block;
+    // Protect inline code from HTML conversion
+    const codeSpans: string[] = [];
+    block = block.replace(/`[^`]+`/g, (m) => {
+      codeSpans.push(m);
+      return `\x00CODE${codeSpans.length - 1}\x00`;
+    });
+    block = block.replace(/<\/?strong>/gi, "**");
+    block = block.replace(/<\/?em>/gi, "*");
+    block = block.replace(/<\/?b>/gi, "**");
+    block = block.replace(/<\/?i>/gi, "*");
+    block = block.replace(/<\/?u>/gi, "");
+    block = block.replace(/<\/?s>/gi, "~~");
+    block = block.replace(/<\?xml[^>]*>/gi, "");
+    block = block.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeSpans[parseInt(i)]);
+    return block;
+  }).join("");
 
   // 5. Normalize heading numbers (Chinese ordinals → Arabic, fix duplicates)
   result = normalizeHeadingNumbers(result);

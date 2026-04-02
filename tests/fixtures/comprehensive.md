@@ -368,7 +368,7 @@ Special characters: (parentheses), [brackets], {braces}, <angles>, "quotes", 'ap
 ## 14 Real-World HTML In Tables (GTC)
 
 These cases represent actual HTML semantics found in GTC catalog markdown:
-`<ul><li>` inside table cells, `<br/>` line breaks, mixed `<strong>`, `<b>`, `<em>`.
+list items inside table cells, line breaks, mixed bold/italic tags.
 
 | Code | Title | Abstract |
 |---|---|---|
@@ -391,8 +391,8 @@ These cases represent actual HTML semantics found in GTC catalog markdown:
 
 ## Extra — GTC Real-World HTML Semantics
 
-These cases come from actual GTC catalog markdown: `<ul><li>` inside table cells,
-`<br/>` line breaks, mixed `<strong>`/`<b>`/`<em>`/`<i>`, multi-paragraph cells.
+These cases come from actual GTC catalog markdown: list items inside table cells,
+line breaks, mixed bold/italic tags, multi-paragraph cells.
 
 | Code | Title | Abstract |
 |---|---|---|
@@ -417,6 +417,17 @@ These cases come from actual GTC catalog markdown: `<ul><li>` inside table cells
 | P-004 | Paragraph before Important | <p>Main abstract text.</p> <p><strong>Important:</strong> session details here.</p> |
 | P-005 | Paragraph with list | <p>Prerequisites:</p> <ul><li><strong>PyTorch</strong></li><li>CUDA 12</li></ul> |
 
+## 17 Escaped Pipe in Cells (regression: \| must NOT be a column separator)
+
+| Code | Title | Abstract |
+|---|---|---|
+| EP-001 | Pipe in link text | See [Install Guide \| Notice](https://example.com/guide) for details. |
+| EP-002 | Pipe in code | Use `grep \| sort \| uniq` to count unique items. |
+| EP-003 | Mixed content | Text with <a href="https://x.com/a?a=1\|b=2">link \| more</a> and **bold \| text**. |
+| EP-004 | Multiple pipes | Command: `cmd1 \| cmd2 \| cmd3` with [Doc A \| Doc B](https://x.com). |
+| EP-005 | Single escaped pipe | Text with \| pipe in cell. |
+| EP-006 | S82795 regression | See [Install & Demo Guide \| Notice & Disclaimers](https://example.com/guide) for details. |
+
 ## 15 Verification Targets
 
 - Heading numbering should remain visible.
@@ -425,6 +436,6 @@ These cases come from actual GTC catalog markdown: `<ul><li>` inside table cells
 - Official strict callout syntax should render consistently.
 - Ordered list behavior must be checked separately from heading numbering.
 - Read-back normalization rules should be derivable from returned markdown.
-- HTML tags (`<p>`, `<ul>`, `<li>`, `<a>`, `<strong>`) must be fully converted.
+- HTML tags (paragraph, list, link, bold) must be fully converted.
 - Chinese ordinals (一、二、) must normalize to Arabic numbers.
 - Bullet items in table cells must convert to separate blocks.

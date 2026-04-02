@@ -281,7 +281,7 @@ export class LarkCli {
 
   /** Fetch doc content as markdown. */
   fetchDoc(docId: string): string | null {
-    const result = this.run(["docs", "fetch", docId]);
+    const result = this.run(["docs", "+fetch", "--doc", docId]);
     if (result && typeof result.data === "object") {
       return (result.data as any).markdown ?? null;
     }

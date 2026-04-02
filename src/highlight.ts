@@ -177,20 +177,9 @@ export function highlightApply(
           if (newTitle !== title) {
             cells[2] = " " + newTitle + " ";
             applied++;
-          } else {
-            // Try first significant word of keyword (>3 chars)
-            for (const w of keyword.split(/\s+/)) {
-              if (w.length > 3) {
-                const wp = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-                const wt = title.replace(wp, `{red:**${w}**}`);
-                if (wt !== title) {
-                  cells[2] = " " + wt + " ";
-                  applied++;
-                  break;
-                }
-              }
-            }
           }
+          // No fallback — if LLM-selected keyword doesn't match the title text,
+          // skip it. Only exact matches should be highlighted.
         }
         outLines.push(cells.join("|"));
       } else {

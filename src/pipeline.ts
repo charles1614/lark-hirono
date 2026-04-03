@@ -277,8 +277,13 @@ async function main() {
         if (cli.appendDoc(docId, chunkMd)) { success = true; break; }
         await sleep(1000 * Math.pow(2, attempt));
       }
-      if (!success) log(args.verbose, `WARNING: Chunk ${i}/${chunks.length - 1} failed`);
-      else log(args.verbose, `Appended chunk ${i}/${chunks.length - 1}`);
+      if (!success) {
+        log(args.verbose, `ERROR: Chunk ${i}/${chunks.length - 1} failed after 3 retries`);
+        process.exit(1);
+      }
+      // Small pause between appends to prevent MCP overload
+      if (i < chunks.length - 1) await sleep(500);
+      log(args.verbose, `Appended chunk ${i}/${chunks.length - 1}`);
     }
   }
 

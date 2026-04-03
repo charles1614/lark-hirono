@@ -60,11 +60,28 @@ export function splitMarkdown(mdText: string, config: Partial<ChunkConfig> = {})
 
     // Track lark-table blocks — never split inside one
     if (/<lark-table[\s>]/.test(line.trim())) insideLarkTable = true;
-    if (/<\/lark-table>/.test(line.trim())) insideLarkTable = false;
+    const isClosingTable = /<\/lark-table>/.test(line.trim());
+    if (isClosingTable) insideLarkTable = false;
 
     const isH2 = cfg.splitOnHeadings && /^#{1,2}\s/.test(line.trim());
+    const effectiveMaxBytes = insideLarkTable ? cfg.maxBytes * 3 : cfg.maxBytes; // 3x limit inside tables
     const wouldExceedLines = currentLines.length >= cfg.maxLines;
-    const wouldExceedBytes = currentSize + lineSize > cfg.maxBytes;
+    const wouldExceedBytes = currentSize + lineSize > effectiveMaxBytes;
+
+    // Split after </lark-table> if chunk is already large
+    if (currentLines.length > 0 && isClosingTable && currentSize > cfg.maxBytes / 2) {
+      currentLines.push(line);
+      currentSize += lineSize;
+      chunks.push({
+        index: chunkIndex++,
+        markdown: currentLines.join("\n"),
+        lineCount: currentLines.length,
+        byteSize: currentSize,
+      });
+      currentLines = [];
+      currentSize = 0;
+      continue;
+    }
 
     if (currentLines.length > 0 && isH2 && !insideLarkTable) {
       chunks.push({

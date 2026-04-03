@@ -238,7 +238,7 @@ async function main() {
 
   // 9. Create document
   log(args.verbose, "Creating document...");
-  const MAX_BYTES = 50_000;
+  const MAX_BYTES = 200_000;
   const mdBytes = Buffer.byteLength(md, "utf-8");
   log(args.verbose, `Markdown size: ${Math.round(mdBytes / 1024)} KB`);
 

@@ -112,7 +112,18 @@ export function preprocessMarkdown(
     if (lines[0] === "") lines = lines.slice(1);
   }
 
-  const out = lines.map((line) => transformHeading(line, rainbowMap));
+  // Track H2 heading counter for sequential blue numbering
+  let h2Counter = 0;
+  const out = lines.map((line) => {
+    const transformed = transformHeading(line, rainbowMap);
+    // If this is an H2 heading that didn't get a number prefix, add sequential number
+    if (/^## (?!<text)/.test(transformed.trim())) {
+      h2Counter++;
+      const colors = rainbowMap[2] ?? { numberColor: "blue", bgColor: "light-orange" };
+      return transformed.replace(/^(## )(.+)/, `$1<text color="${colors.numberColor}">${h2Counter} </text>$2`);
+    }
+    return transformed;
+  });
   const trailing = text.endsWith("\n") ? "\n" : "";
   let result = out.join("\n") + trailing;
 

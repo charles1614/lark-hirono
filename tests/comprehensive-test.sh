@@ -145,9 +145,9 @@ done
 
 echo ""
 echo "=== 11. Heading Normalization ==="
-S11=$(section_content 'color="blue">11 ' 'color="blue">12 ')
-if echo "$S11" | grep -qF 'color="blue">18 </text>Chinese Ordinal First'; then echo "  ✅ Chinese → 18"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 18"; FAIL=$((FAIL+1)); fi
-if echo "$S11" | grep -qF 'color="blue">19 </text>Chinese Ordinal Second'; then echo "  ✅ Chinese → 19"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 19"; FAIL=$((FAIL+1)); fi
+S11=$(section_content 'color="blue">11 ' 'color="blue">14 ')
+if echo "$S11" | grep -qF 'color="blue">12 </text>Chinese Ordinal First'; then echo "  ✅ Chinese → 12"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 12"; FAIL=$((FAIL+1)); fi
+if echo "$S11" | grep -qF 'color="blue">13 </text>Chinese Ordinal Second'; then echo "  ✅ Chinese → 13"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 13"; FAIL=$((FAIL+1)); fi
 
 echo ""
 echo "=== 12. Misc Controls ==="

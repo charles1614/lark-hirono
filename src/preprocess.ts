@@ -112,15 +112,27 @@ export function preprocessMarkdown(
     if (lines[0] === "") lines = lines.slice(1);
   }
 
-  // Track H2 heading counter for sequential blue numbering
-  let h2Counter = 0;
+  // Scan: count H1 headings to decide numbering start level
+  const h1Count = lines.filter((l) => /^# (?!#)/.test(l.trim())).length;
+  const numberLevel = h1Count <= 1 ? 2 : 1; // single H1 = title, skip it
+
+  // Track heading counter for sequential blue numbering
+  let headingCounter = 0;
   const out = lines.map((line) => {
     const transformed = transformHeading(line, rainbowMap);
-    // If this is an H2 heading that didn't get a number prefix, add sequential number
-    if (/^## (?!<text)/.test(transformed.trim())) {
-      h2Counter++;
-      const colors = rainbowMap[2] ?? { numberColor: "blue", bgColor: "light-orange" };
-      return transformed.replace(/^(## )(.+)/, `$1<text color="${colors.numberColor}">${h2Counter} </text>$2`);
+    const trimmed = transformed.trim();
+    // Check if this heading needs sequential numbering
+    const headingMatch = trimmed.match(/^(#{1,6}) (?!<text)/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      if (level === numberLevel) {
+        headingCounter++;
+        const colors = rainbowMap[level] ?? rainbowMap[2] ?? { numberColor: "blue", bgColor: "light-orange" };
+        return transformed.replace(
+          new RegExp(`^(#{${level}} )(.+)`),
+          `$1<text color="${colors.numberColor}">${headingCounter} </text>$2`
+        );
+      }
     }
     return transformed;
   });

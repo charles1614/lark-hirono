@@ -273,16 +273,16 @@ async function main() {
       else if (lastHeading) { chunkMd = lastHeading + "\n\n" + chunkMd; }
 
       let success = false;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 2; attempt++) {
         if (cli.appendDoc(docId, chunkMd)) { success = true; break; }
-        await sleep(1000 * Math.pow(2, attempt));
+        await sleep(3000 * (attempt + 1));
       }
       if (!success) {
-        log(args.verbose, `ERROR: Chunk ${i}/${chunks.length - 1} failed after 3 retries`);
+        log(args.verbose, `ERROR: Chunk ${i}/${chunks.length - 1} failed after retries`);
         process.exit(1);
       }
-      // Small pause between appends to prevent MCP overload
-      if (i < chunks.length - 1) await sleep(500);
+      // Cool down between appends
+      if (i < chunks.length - 1) await sleep(1000);
       log(args.verbose, `Appended chunk ${i}/${chunks.length - 1}`);
     }
   }

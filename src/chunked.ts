@@ -52,16 +52,21 @@ export function splitMarkdown(mdText: string, config: Partial<ChunkConfig> = {})
   let currentLines: string[] = [];
   let currentSize = 0;
   let chunkIndex = 0;
+  let insideLarkTable = false;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineSize = Buffer.byteLength(line, "utf-8") + 1;
 
+    // Track lark-table blocks — never split inside one
+    if (/<lark-table[\s>]/.test(line.trim())) insideLarkTable = true;
+    if (/<\/lark-table>/.test(line.trim())) insideLarkTable = false;
+
     const isH2 = cfg.splitOnHeadings && /^#{1,2}\s/.test(line.trim());
     const wouldExceedLines = currentLines.length >= cfg.maxLines;
     const wouldExceedBytes = currentSize + lineSize > cfg.maxBytes;
 
-    if (currentLines.length > 0 && isH2) {
+    if (currentLines.length > 0 && isH2 && !insideLarkTable) {
       chunks.push({
         index: chunkIndex++,
         markdown: currentLines.join("\n"),
@@ -70,7 +75,7 @@ export function splitMarkdown(mdText: string, config: Partial<ChunkConfig> = {})
       });
       currentLines = [];
       currentSize = 0;
-    } else if (currentLines.length > 0 && (wouldExceedLines || wouldExceedBytes)) {
+    } else if (currentLines.length > 0 && (wouldExceedLines || wouldExceedBytes) && !insideLarkTable) {
       let splitAt = currentLines.length;
       for (let j = currentLines.length - 1; j >= 0; j--) {
         if (/^#{1,6}\s/.test(currentLines[j].trim())) {

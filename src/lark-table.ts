@@ -243,7 +243,12 @@ function parseTableRow(line: string): string[] {
   let current = "";
   let inTag = false;
   for (let i = 0; i < content.length; i++) {
-    if (content[i] === "<") { inTag = true; current += content[i]; }
+    if (content[i] === "<" && !inTag) {
+      // Only enter inTag if there's a matching > later (real HTML tag)
+      const closeIdx = content.indexOf(">", i + 1);
+      if (closeIdx !== -1) { inTag = true; current += content[i]; }
+      else { current += content[i]; } // bare < without >, not a tag
+    }
     else if (content[i] === ">") { inTag = false; current += content[i]; }
     else if (content[i] === "|" && !inTag) {
       if (i > 0 && content[i - 1] === "\\") {
@@ -274,7 +279,9 @@ function pipeCount(line: string): number {
   let inTag = false;
   const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
   for (let i = 0; i < trimmed.length; i++) {
-    if (trimmed[i] === "<") inTag = true;
+    if (trimmed[i] === "<" && !inTag) {
+      if (trimmed.indexOf(">", i + 1) !== -1) inTag = true;
+    }
     else if (trimmed[i] === ">") inTag = false;
     else if (trimmed[i] === "|" && !inTag) {
       // Skip escaped pipes (\|), but count \\| (escaped backslash + pipe)

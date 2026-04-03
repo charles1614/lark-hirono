@@ -139,48 +139,41 @@ export class LarkCli {
   /** Update a section by title using replace_range mode. */
   updateSection(docId: string, sectionTitle: string, markdown: string): boolean {
     try {
-      const dir = mkdtempSync(join(tmpdir(), "feishu_"));
-      const tmpPath = join(dir, "section.md");
-      writeFileSync(tmpPath, markdown, "utf-8");
-
-      try {
-        const cmd = `MD=$(cat '${tmpPath}'); ${this.cli} docs +update --doc ${docId} --mode replace_range --selection-by-title ${JSON.stringify(sectionTitle)} --markdown "$MD"`;
-        const out = execSyncShell(cmd, {
-          encoding: "utf-8",
-          timeout: 120_000,
-          maxBuffer: 10 * 1024 * 1024,
-        });
-        const parsed = JSON.parse(out);
-        return parsed?.ok === true || parsed?.code === 0;
-      } finally {
-        try { unlinkSync(tmpPath); } catch { /* ignore */ }
-        try { rmdirSync(dir); } catch { /* ignore */ }
-      }
+      const args = [
+        "docs",
+        "+update",
+        "--doc", docId,
+        "--mode", "replace_range",
+        "--selection-by-title", sectionTitle,
+        "--markdown", markdown,
+      ];
+      const out = execFileSync(this.cli, args, {
+        encoding: "utf-8",
+        timeout: 120_000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const parsed = JSON.parse(out);
+      return parsed?.ok === true || parsed?.code === 0;
     } catch {
       return false;
     }
   }
   appendDoc(docId: string, markdown: string): boolean {
     try {
-      // Write to temp file, then use shell variable to pass content
-      // (JSON.stringify corrupts markdown; stdin mode doesn't parse correctly)
-      const dir = mkdtempSync(join(tmpdir(), "feishu_"));
-      const tmpPath = join(dir, "chunk.md");
-      writeFileSync(tmpPath, markdown, "utf-8");
-
-      try {
-        const cmd = `MD=$(cat '${tmpPath}'); ${this.cli} docs +update --doc ${docId} --mode append --markdown "$MD"`;
-        const out = execSyncShell(cmd, {
-          encoding: "utf-8",
-          timeout: 120_000,
-          maxBuffer: 10 * 1024 * 1024,
-        });
-        const parsed = JSON.parse(out);
-        return parsed?.ok === true || parsed?.code === 0;
-      } finally {
-        try { unlinkSync(tmpPath); } catch { /* ignore */ }
-        try { rmdirSync(dir); } catch { /* ignore */ }
-      }
+      const args = [
+        "docs",
+        "+update",
+        "--doc", docId,
+        "--mode", "append",
+        "--markdown", markdown,
+      ];
+      const out = execFileSync(this.cli, args, {
+        encoding: "utf-8",
+        timeout: 120_000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
+      const parsed = JSON.parse(out);
+      return parsed?.ok === true || parsed?.code === 0;
     } catch {
       return false;
     }
@@ -202,21 +195,15 @@ export class LarkCli {
     wikiSpace = "7620053427331681234",
     wikiNode?: string
   ): { doc_id: string; url: string } | null {
-    // Write to temp file, use shell variable to avoid stdin parsing issues
-    const dir = mkdtempSync(join(tmpdir(), "feishu_"));
-    const tmpPath = join(dir, "create.md");
-    writeFileSync(tmpPath, markdown, "utf-8");
-
     try {
-      let targetArg = "";
+      const args = ["docs", "+create", "--title", title, "--markdown", markdown];
       if (wikiNode) {
-        targetArg = `--wiki-node ${wikiNode}`;
+        args.push("--wiki-node", wikiNode);
       } else if (wikiSpace) {
-        targetArg = `--wiki-space ${wikiSpace}`;
+        args.push("--wiki-space", wikiSpace);
       }
 
-      const cmd = `MD=$(cat '${tmpPath}'); ${this.cli} docs +create --title ${JSON.stringify(title)} ${targetArg} --markdown "$MD"`;
-      const out = execSyncShell(cmd, {
+      const out = execFileSync(this.cli, args, {
         encoding: "utf-8",
         timeout: 120_000,
         maxBuffer: 10 * 1024 * 1024,
@@ -230,9 +217,6 @@ export class LarkCli {
       return null;
     } catch {
       return null;
-    } finally {
-      try { unlinkSync(tmpPath); } catch { /* ignore */ }
-      try { rmdirSync(dir); } catch { /* ignore */ }
     }
   }
 

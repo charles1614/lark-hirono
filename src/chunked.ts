@@ -84,12 +84,16 @@ export function splitMarkdown(mdText: string, config: Partial<ChunkConfig> = {})
     }
 
     if (currentLines.length > 0 && isH2 && !insideLarkTable) {
-      chunks.push({
-        index: chunkIndex++,
-        markdown: currentLines.join("\n"),
-        lineCount: currentLines.length,
-        byteSize: currentSize,
-      });
+      // Don't emit a chunk that's only blank lines — just discard them
+      const hasContent = currentLines.some(l => l.trim());
+      if (hasContent) {
+        chunks.push({
+          index: chunkIndex++,
+          markdown: currentLines.join("\n"),
+          lineCount: currentLines.length,
+          byteSize: currentSize,
+        });
+      }
       currentLines = [];
       currentSize = 0;
     } else if (currentLines.length > 0 && (wouldExceedLines || wouldExceedBytes) && !insideLarkTable) {

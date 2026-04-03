@@ -146,8 +146,12 @@ function parseTableRows(lines: string[], startIdx: number): { header: string[]; 
 function countPipesInCells(cells: string[]): boolean {
   if (cells.length === 0) return false;
   // A proper row: each cell should NOT contain newline characters
-  // (continuation lines are single lines of text with possible `- ` or content)
-  // Also check: the original line didn't get split incorrectly
+  // (continuation lines accumulate text with \n into the last cell)
+  // Also verify: no cell starts with "- " followed by content on the same line
+  // (typical pattern for list continuation lines that get parsed as cells)
+  for (const cell of cells) {
+    if (cell.includes("\n")) return false;
+  }
   return true;
 }
 

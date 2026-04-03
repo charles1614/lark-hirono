@@ -198,16 +198,27 @@ export function convertToLarkTables(md: string): string {
           // Convert <br> to newlines and <ul>/<li> to markdown bullets
           // (native Feishu list format). \n- creates separate lines in the
           // cell — the continuation parser in parseTableRows handles them.
-          let normalized = cell.replace(/<br[^>]*\/?>/gi, "\n\n");
-          // Paragraph breaks in table cells: use \n\n to create empty lines
-          // which Feishu markdown renders as paragraph breaks.
+          // Inline formatting first (before block elements, to avoid splitting ** markers)
+          let normalized = cell.replace(/<\/?strong>/gi, "**");
+          normalized = normalized.replace(/<\/?b>/gi, "**");
+          normalized = normalized.replace(/<\/?em>/gi, "*");
+          normalized = normalized.replace(/<\/?i>/gi, "*");
+
+          // <br> → newline
+          normalized = normalized.replace(/<br[^>]*\/?>/gi, "\n\n");
+          // Collapse ** followed by newlines into clean paragraph breaks
+          // This fixes patterns like <strong><br></strong> → **\n\n  → \n\n
+          normalized = normalized.replace(/\*{1,2}\n{1,2}\*{1,2}/g, "\n\n");
+          // Strip leading ** on a line followed by only whitespace/newline
+          normalized = normalized.replace(/^\*{1,2}\s*$/gm, "");
+          // Paragraph breaks in table cells
           normalized = normalized.replace(/<\/p>\s*<p>/gi, "\n\n");
           normalized = normalized.replace(/<\/p>/gi, "");
           normalized = normalized.replace(/<p>/gi, "");
+          // List items
           normalized = normalized.replace(/<li>\s*<\/li>/gi, "");
           normalized = normalized.replace(/<li>/gi, "\n- ");
           normalized = normalized.replace(/<\/li>/gi, "");
-          // Add newline after closing list tags before removing them
           normalized = normalized.replace(/<\/ul>\s*/gi, "\n");
           normalized = normalized.replace(/<\/ol>\s*/gi, "\n");
           normalized = normalized.replace(/<\/?ul>/gi, "");

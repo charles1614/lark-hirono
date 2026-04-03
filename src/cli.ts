@@ -6,7 +6,8 @@
  */
 
 import { execSync as execSyncShell, execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 // ─── CLI Discovery ──────────────────────────────────────────────────────
 
@@ -261,11 +262,41 @@ export class LarkCli {
     return result !== null && result.code === 0;
   }
 
-  /** Fetch doc content as markdown. */
+  /** Fetch doc content as markdown. Streams to file to handle large docs (>1MB). */
   fetchDoc(docId: string): string | null {
-    const result = this.run(["docs", "+fetch", "--doc", docId]);
-    if (result && typeof result.data === "object") {
-      return (result.data as any).markdown ?? null;
+    const tmpDir = mkdtempSync(`${tmpdir()}/larkcli-fetch-`);
+    const tmpFile = `${tmpDir}/${docId}.md`;
+
+    try {
+      const out = execFileSync(this.cli, [
+        "docs", "+fetch", "--doc", docId,
+        "--output", tmpFile,
+      ], {
+        encoding: "utf-8",
+        timeout: 120_000,
+        maxBuffer: 50 * 1024 * 1024,
+      });
+
+      // Use file output (--output flag) if lark-cli supports it
+      if (existsSync(tmpFile)) {
+        const md = readFileSync(tmpFile, "utf-8");
+        return md;
+      }
+    } catch {
+      // Fallback: capture to stdout with large buffer
+      try {
+        const out = execFileSync(this.cli, ["docs", "+fetch", "--doc", docId], {
+          encoding: "utf-8",
+          timeout: 120_000,
+          maxBuffer: 50 * 1024 * 1024,
+        });
+        const parsed = JSON.parse(out);
+        if (parsed?.data?.markdown) return parsed.data.markdown;
+      } catch {
+        return null;
+      }
+    } finally {
+      try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* swallow */ }
     }
     return null;
   }

@@ -7,7 +7,7 @@
  * - And so on...
  */
 
-import type { LarkCli } from "./cli.js";
+import type { LarkCli } from "../cli.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 

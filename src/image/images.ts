@@ -7,11 +7,11 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, unlinkSync, mkdirSync, existsSync, statSync } from "node:fs";
+import { unlinkSync, mkdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findLarkCli } from "./cli.js";
-import type { LarkCli } from "./cli.js";
+import { findLarkCli } from "../cli.js";
+import type { LarkCli } from "../cli.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 

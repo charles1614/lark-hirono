@@ -10,7 +10,7 @@
  * 6. No empty bullets
  */
 
-import type { LarkCli } from "./cli.js";
+import type { LarkCli } from "../cli.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ export interface VerifyReport {
     chineseTextPresent: boolean;
     blueNumberedHeading: boolean;
     chineseOrdinalNormalized: boolean;
+    paragraphsSeparated: boolean;
   };
 
   // Overall
@@ -74,6 +75,7 @@ function defaultContentChecks() {
     chineseTextPresent: false,
     blueNumberedHeading: false,
     chineseOrdinalNormalized: false,
+    paragraphsSeparated: false,
   };
 }
 
@@ -118,7 +120,7 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
 
     if (bt >= 3 && bt <= 11) {
       report.headingCount++;
-      if (rootChildIds.includes(b.block_id) && !tableChildIds.has(b.block_id)) {
+      if (rootChildIds.includes(b.block_id as string) && !tableChildIds.has(b.block_id as string)) {
         report.headingRootCount++;
       }
       const key = `heading${bt - 2}`;

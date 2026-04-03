@@ -4,13 +4,6 @@
  * Runs BEFORE preprocessMarkdown (which adds blue to existing numbers).
  */
 
-const CHINESE_NUMS: Record<string, string> = {
-  "一": "1", "二": "2", "三": "3", "四": "4", "五": "5",
-  "六": "6", "七": "7", "八": "8", "九": "9", "十": "10",
-  "十一": "11", "十二": "12", "十三": "13", "十四": "14", "十五": "15",
-  "甲": "1", "乙": "2", "丙": "3", "丁": "4", "戊": "5",
-};
-
 /**
  * Normalize heading numbers:
  * - Chinese ordinals (一、二、) → 1. 2.

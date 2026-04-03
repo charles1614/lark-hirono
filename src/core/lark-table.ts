@@ -278,23 +278,24 @@ function parseTableRow(line: string): string[] {
  * Count how many `|` separators are in a line of table markdown.
  * A proper data row has exactly `colCount - 1` internal pipes.
  */
-function pipeCount(line: string): number {
-  let count = 0;
-  let inTag = false;
-  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  for (let i = 0; i < trimmed.length; i++) {
-    if (trimmed[i] === "<" && !inTag) {
-      if (trimmed.indexOf(">", i + 1) !== -1) inTag = true;
-    }
-    else if (trimmed[i] === ">") inTag = false;
-    else if (trimmed[i] === "|" && !inTag) {
-      // Skip escaped pipes (\|), but count \\| (escaped backslash + pipe)
-      if (i > 0 && trimmed[i - 1] === "\\") {
-        if (i > 1 && trimmed[i - 2] === "\\") { count++; } // \\| counts as separator
-        else { continue; } // \| is escaped pipe, skip
-      }
-      else { count++; }
-    }
-  }
-  return count;
-}
+// pipeCount: unused utility — kept for future table validation if needed
+// function pipeCount(line: string): number {
+//   let count = 0;
+//   let inTag = false;
+//   const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+//   for (let i = 0; i < trimmed.length; i++) {
+//     if (trimmed[i] === "<" && !inTag) {
+//       if (trimmed.indexOf(">", i + 1) !== -1) inTag = true;
+//     }
+//     else if (trimmed[i] === ">") inTag = false;
+//     else if (trimmed[i] === "|" && !inTag) {
+//       // Skip escaped pipes (\|), but count \\| (escaped backslash + pipe)
+//       if (i > 0 && trimmed[i - 1] === "\\") {
+//         if (i > 1 && trimmed[i - 2] === "\\") { count++; } // \\| counts as separator
+//         else { continue; } // \| is escaped pipe, skip
+//       }
+//       else { count++; }
+//     }
+//   }
+//   return count;
+// }

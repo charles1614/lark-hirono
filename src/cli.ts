@@ -6,9 +6,7 @@
  */
 
 import { execSync as execSyncShell, execFileSync } from "node:child_process";
-import { existsSync, writeFileSync, unlinkSync, mkdirSync, mkdtempSync, rmdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 
 // ─── CLI Discovery ──────────────────────────────────────────────────────
 

@@ -13,6 +13,10 @@
     "./pipeline": {
       "types": "./dist/pipeline.d.ts",
       "import": "./dist/pipeline.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
     }
   },
   "files": [
@@ -22,13 +26,14 @@
     "LICENSE"
   ],
   "bin": {
-    "feishu-custom": "dist/pipeline.js"
+    "feishu-custom": "dist/bin/feishu-custom.js"
   },
   "scripts": {
     "build": "tsc",
     "pipeline": "tsx src/pipeline.ts",
     "preprocess": "tsx src/preprocess.ts",
     "verify": "tsx src/verify.ts",
+    "lint": "eslint src/ bin/",
     "test": "bash tests/comprehensive-test.sh",
     "test:upload": "bash tests/upload-test.sh",
     "prepublishOnly": "npm run build"
@@ -47,7 +52,9 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "eslint": "^9.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0"
   }
 }

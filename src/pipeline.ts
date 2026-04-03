@@ -4,19 +4,20 @@
 
 import { readFileSync } from "node:fs";
 import { LarkCli } from "./cli.js";
-import { analyzeMarkdown } from "./analyze.js";
-import { normalizeMarkdown, lintMarkdown, boldTableHeaders, unescapePipes } from "./normalize.js";
-import { highlightExtract, saveBatches, highlightApply, type KeywordEntry } from "./highlight.js";
-import { preprocessMarkdown } from "./preprocess.js";
-import { computePatches, executePatches } from "./patch.js";
-import { processImages, extractImageRefs } from "./images.js";
-import { splitMarkdown } from "./chunked.js";
-import { convertToLarkTables } from "./lark-table.js";
-import { verifyDoc, formatReport } from "./verify.js";
+import { analyzeMarkdown } from "./core/analyze.js";
+import { normalizeMarkdown, lintMarkdown, boldTableHeaders, unescapePipes } from "./core/normalize.js";
+import { highlightExtract, saveBatches, highlightApply, type KeywordEntry } from "./core/highlight.js";
+import { preprocessMarkdown } from "./core/preprocess.js";
+import { computePatches, executePatches } from "./patch/patch.js";
+import { processImages, extractImageRefs } from "./image/images.js";
+import { splitMarkdown } from "./core/chunked.js";
+import { convertToLarkTables } from "./core/lark-table.js";
+import { verifyDoc, formatReport } from "./verify/verify.js";
+import { log, logError, initLogging } from "./logging.js";
 
 // ─── Arg Parsing ────────────────────────────────────────────────────────
 
-interface PipelineArgs {
+export interface PipelineArgs {
   input: string;
   title: string;
   wikiSpace: string;
@@ -31,52 +32,11 @@ interface PipelineArgs {
   verbose: boolean;
 }
 
-function parseArgs(argv: string[]): PipelineArgs {
-  const args = argv.slice(2);
-  const positional: string[] = [];
-  const flags: Record<string, string | boolean> = {};
-
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a.startsWith("--")) {
-      const key = a.slice(2);
-      if (["dry-run", "verify", "verbose", "strip-title", "analyze", "no-highlight"].includes(key)) {
-        flags[key] = true;
-      } else {
-        flags[key] = args[++i] ?? "";
-      }
-    } else if (a === "-v") {
-      flags.verbose = true;
-    } else {
-      positional.push(a);
-    }
-  }
-
-  if (positional.length < 1) {
-    console.error("Usage: pipeline.ts <input.md> [title] [--options]");
-    process.exit(1);
-  }
-
-  return {
-    input: positional[0],
-    title: positional[1] || "",
-    wikiSpace: (flags["wiki-space"] as string) || "7620053427331681234",
-    wikiNode: (flags["wiki-node"] as string) || "UNtHwabqNiqc8ZkzvLscWNnwnYd",
-    imageDir: (flags["image-dir"] as string) || null,
-    stripTitle: Boolean(flags["strip-title"]),
-    bgMode: (flags["bg-mode"] as "light" | "dark") || "light",
-    highlight: !flags["no-highlight"],
-    verify: Boolean(flags.verify),
-    analyzeOnly: Boolean(flags.analyze),
-    dryRun: Boolean(flags["dry-run"]),
-    verbose: Boolean(flags.verbose),
-  };
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────
-
-function log(verbose: boolean, msg: string) {
-  if (verbose) console.error(msg);
+export interface PipelineResult {
+  ok: boolean;
+  docId?: string;
+  docUrl?: string;
+  verifyReport?: ReturnType<typeof formatReport>;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -156,22 +116,22 @@ function splitOversizedSections(md: string): string {
 
 // ─── Pipeline ───────────────────────────────────────────────────────────
 
-async function main() {
-  const args = parseArgs(process.argv);
+export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
+  initLogging(args.verbose);
 
   // 1. Read source and extract title
   const src = readFileSync(args.input, "utf-8");
 
   let title = args.title;
-  if (!process.argv.some((a) => a === "--title" || a === "-t")) {
+  if (!title) {
     const h1Match = src.match(/^#\s+(.+)$/m);
     if (h1Match) title = h1Match[1].replace(/\s*\{.*\}/, "").trim();
   }
-  log(args.verbose, `Title: ${title}`);
+  log(`Title: ${title}`);
 
   // 2. Normalize (HTML → markdown)
   const { text: normalized, report: normReport } = normalizeMarkdown(src);
-  log(args.verbose, `Normalized: table_sep=${normReport.tableSeparatorFixed}`);
+  log(`Normalized: table_sep=${normReport.tableSeparatorFixed}`);
 
   // 3. Analyze
   const analysis = analyzeMarkdown(normalized);
@@ -182,18 +142,18 @@ async function main() {
       headings: analysis.headingCount,
     }, null, 2));
   }
-  if (args.analyzeOnly) return;
+  if (args.analyzeOnly) return { ok: true };
 
   // 4. Lint
   const warnings = lintMarkdown(normalized);
   if (warnings.length > 0 && args.verbose) {
-    for (const w of warnings) log(true, `⚠ ${w}`);
+    for (const w of warnings) log(`⚠ ${w}`);
   }
 
   // 5. Preprocess (heading numbers already normalized in step 2)
   let md = preprocessMarkdown(normalized, { stripTitle: args.stripTitle });
   md = splitOversizedSections(md);
-  log(args.verbose, `After section split: ${md.split("\n").length} lines`);
+  log(`After section split: ${md.split("\n").length} lines`);
 
   // 6. Highlight (MUST run before convertToLarkTables — works on markdown tables only)
   const highlightKeywordFile = args.input + ".selected_keywords.json";
@@ -203,18 +163,18 @@ async function main() {
   if (args.highlight && analysis.documentType === "catalog_table") {
     const batches = highlightExtract(md);
     const totalTitles = batches.reduce((n, b) => n + b.length, 0);
-    log(args.verbose, `Highlight: ${totalTitles} titles in ${batches.length} batch(es)`);
+    log(`Highlight: ${totalTitles} titles in ${batches.length} batch(es)`);
 
     if (hasKeywordFile) {
       const keywords: KeywordEntry[] = JSON.parse(readFileSync(highlightKeywordFile, "utf-8"));
-      log(args.verbose, `Highlight: loading ${keywords.length} keywords`);
+      log(`Highlight: loading ${keywords.length} keywords`);
       const { markdown: highlighted } = highlightApply(md, keywords);
       md = highlighted;
-      log(args.verbose, `Highlight: applied keywords`);
+      log(`Highlight: applied keywords`);
     } else {
       const batchPaths = saveBatches(batches, args.input);
-      log(args.verbose, `Highlight: saved ${batchPaths.length} batch file(s) for LLM selection`);
-      log(args.verbose, `Highlight: waiting for ${highlightKeywordFile}`);
+      log(`Highlight: saved ${batchPaths.length} batch file(s) for LLM selection`);
+      log(`Highlight: waiting for ${highlightKeywordFile}`);
     }
   }
 
@@ -222,44 +182,44 @@ async function main() {
   // This runs regardless of --no-highlight so fixture tags always render.
   md = md.replace(/\{red:\*\*([^*]+)\*\*\}/g, '<text color="red">$1</text>');
   const redCount = (md.match(/<text color="red">/g) || []).length;
-  if (redCount > 0) log(args.verbose, `Red highlights: ${redCount}`);
+  if (redCount > 0) log(`Red highlights: ${redCount}`);
 
   // 7. Convert markdown tables to lark-table XML
   md = boldTableHeaders(md);
   md = convertToLarkTables(md);
   md = unescapePipes(md); // unescape \| in lark-table cells
-  log(args.verbose, `After lark-table: ${md.split("\n").length} lines`);
+  log(`After lark-table: ${md.split("\n").length} lines`);
 
-  if (args.dryRun) { process.stdout.write(md); return; }
+  if (args.dryRun) { process.stdout.write(md); return { ok: true }; }
 
   // 8. Init CLI
   const cli = new LarkCli({ retries: 3 });
-  try { cli.status(); } catch (err) { console.error(`Auth error: ${(err as Error).message}`); process.exit(1); }
+  try { cli.status(); } catch (err) { logError(`Auth error: ${(err as Error).message}`); process.exit(1); }
 
   // 9. Create document
-  log(args.verbose, "Creating document...");
+  log("Creating document...");
   const MAX_BYTES = 200_000;
   const mdBytes = Buffer.byteLength(md, "utf-8");
-  log(args.verbose, `Markdown size: ${Math.round(mdBytes / 1024)} KB`);
+  log(`Markdown size: ${Math.round(mdBytes / 1024)} KB`);
 
   let docId: string;
   let docUrl: string;
 
   if (mdBytes <= MAX_BYTES) {
     const created = cli.createDoc(title, md, args.wikiSpace, args.wikiNode);
-    if (!created) { console.error("ERROR: Document creation failed"); process.exit(1); }
+    if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
     docId = created.doc_id;
     docUrl = created.url;
   } else {
-    log(args.verbose, "Large doc, using chunked upload...");
+    log("Large doc, using chunked upload...");
     const chunks = splitMarkdown(md, { maxLines: 200, maxBytes: MAX_BYTES });
-    log(args.verbose, `Split into ${chunks.length} chunks`);
+    log(`Split into ${chunks.length} chunks`);
 
     const created = cli.createDoc(title, chunks[0].markdown, args.wikiSpace, args.wikiNode);
-    if (!created) { console.error("ERROR: Document creation failed"); process.exit(1); }
+    if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
     docId = created.doc_id;
     docUrl = created.url;
-    log(args.verbose, `Created chunk 0/${chunks.length - 1}: ${docId}`);
+    log(`Created chunk 0/${chunks.length - 1}: ${docId}`);
 
     let lastHeading = "";
     const headingFromChunk = (m: string): string =>
@@ -272,46 +232,102 @@ async function main() {
       if (currentHeading) { lastHeading = currentHeading; }
       else if (lastHeading) { chunkMd = lastHeading + "\n\n" + chunkMd; }
 
-      // No retry: MCP timeouts are infra issues but Feishu may have already
-      // uploaded the chunk successfully. Retrying would cause duplicate content.
       if (!cli.appendDoc(docId, chunkMd)) {
-        log(args.verbose, `WARNING: Chunk ${i}/${chunks.length - 1} append returned failure (may still have been uploaded)`);
+        log(`WARNING: Chunk ${i}/${chunks.length - 1} append returned failure (may still have been uploaded)`);
       }
-      // 2s cooldown between appends to reduce MCP transport overload
       await sleep(2000);
-      log(args.verbose, `Appended chunk ${i}/${chunks.length - 1}`);
+      log(`Appended chunk ${i}/${chunks.length - 1}`);
     }
   }
 
-  log(args.verbose, `Doc ready: ${docId}`);
+  log(`Doc ready: ${docId}`);
 
   // 10. Images
   const imageRefs = extractImageRefs(md);
   if (imageRefs.length > 0) {
-    log(args.verbose, `Images: ${imageRefs.length} references found`);
+    log(`Images: ${imageRefs.length} references found`);
     try {
       const imgResult = processImages(cli, md, docId);
-      log(args.verbose, `Images: ${imgResult.uploaded}/${imageRefs.length} uploaded`);
-    } catch (err) { log(args.verbose, `Image error: ${(err as Error).message}`); }
+      log(`Images: ${imgResult.uploaded}/${imageRefs.length} uploaded`);
+    } catch (err) { log(`Image error: ${(err as Error).message}`); }
   }
 
   // 11. Patches (heading backgrounds)
   const blocks = cli.getBlocks(docId);
-  log(args.verbose, `Blocks: ${blocks.length}`);
+  log(`Blocks: ${blocks.length}`);
   const patches = computePatches(blocks, args.bgMode);
-  log(args.verbose, `Patches: ${patches.length}`);
+  log(`Patches: ${patches.length}`);
   if (patches.length > 0) {
     const [ok, total] = executePatches(cli, docId, patches);
-    log(args.verbose, `Patch result: ${ok}/${total}`);
+    log(`Patch result: ${ok}/${total}`);
   }
 
   // 12. Verify
+  let verifyReport: string | undefined;
   if (args.verify) {
     const report = verifyDoc(cli, docId);
-    console.log(formatReport(report));
+    verifyReport = formatReport(report);
+    console.log(verifyReport);
   }
 
   console.log(`\nDone. URL: ${docUrl}`);
+  return { ok: true, docId, docUrl, verifyReport };
 }
 
-main();
+// CLI entry (only when run directly, not imported)
+if (process.argv[1]?.endsWith("pipeline.ts") || process.argv[1]?.endsWith("pipeline.js")) {
+  const args: PipelineArgs = {
+    input: process.argv[2] || "",
+    title: process.argv[3] || "",
+    wikiSpace: "7620053427331681234",
+    wikiNode: "UNtHwabqNiqc8ZkzvLscWNnwnYd",
+    imageDir: null,
+    stripTitle: false,
+    bgMode: "light",
+    highlight: true,
+    verify: false,
+    analyzeOnly: false,
+    dryRun: false,
+    verbose: false,
+  };
+
+  const rawArgs = process.argv.slice(2);
+  const positional: string[] = [];
+  const flags: Record<string, string | boolean> = {};
+
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    if (a.startsWith("--")) {
+      const key = a.slice(2);
+      if (["dry-run", "verify", "verbose", "strip-title", "analyze", "no-highlight"].includes(key)) {
+        flags[key] = true;
+      } else {
+        flags[key] = rawArgs[++i] ?? "";
+      }
+    } else if (a === "-v") {
+      flags.verbose = true;
+    } else {
+      positional.push(a);
+    }
+  }
+
+  if (positional.length < 1) {
+    console.error("Usage: pipeline.ts <input.md> [title] [--options]");
+    process.exit(1);
+  }
+
+  args.input = positional[0];
+  args.title = positional[1] ?? "";
+  args.wikiSpace = (flags["wiki-space"] as string) || args.wikiSpace;
+  args.wikiNode = (flags["wiki-node"] as string) || args.wikiNode;
+  args.imageDir = (flags["image-dir"] as string) || null;
+  args.stripTitle = Boolean(flags["strip-title"]);
+  args.bgMode = (flags["bg-mode"] as "light" | "dark") || args.bgMode;
+  args.highlight = !flags["no-highlight"];
+  args.verify = Boolean(flags.verify);
+  args.analyzeOnly = Boolean(flags.analyze);
+  args.dryRun = Boolean(flags["dry-run"]);
+  args.verbose = Boolean(flags.verbose);
+
+  runPipeline(args).then(r => { if (!r.ok) process.exit(1); });
+}

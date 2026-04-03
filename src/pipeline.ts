@@ -118,18 +118,32 @@ function splitOversizedSections(md: string): string {
     const preamble = sec.rows.slice(0, headerIdx + 1);
     const dataRows = sec.rows.slice(headerIdx + 1);
     const totalChunks = Math.ceil(dataRows.length / CHUNK_ROWS);
+    // Extract parent number from heading (e.g., "4" from "<text color="blue">4 </text>")
+    const parentNumMatch = sec.heading.match(/<text[^>]*>(\d+)\s*<\/text>/);
+    const parentNum = parentNumMatch?.[1] ?? "";
     // Emit parent heading only when there are 2+ chunks
     if (totalChunks > 1) {
       out.push(sec.heading);
     }
+    let subCounter = 0;
     for (let i = 0; i < dataRows.length; i += CHUNK_ROWS) {
       const chunk = dataRows.slice(i, i + CHUNK_ROWS);
       let subHeading: string;
       if (totalChunks > 1) {
+        subCounter++;
+        const rangeStr = `[${i + 1}-${Math.min(i + CHUNK_ROWS, dataRows.length)}]`;
+        // Replace ## with ### and append hierarchical sub-number (e.g., 4.1)
         subHeading = sec.heading.replace(
           /^## (.+?)(\s+\{.*\})?$/,
-          `### $1 [${i + 1}-${Math.min(i + CHUNK_ROWS, dataRows.length)}]$2`
+          `### $1 ${rangeStr}$2`
         );
+        // Replace parent number with hierarchical number (e.g., "4" → "4.1")
+        if (parentNum) {
+          subHeading = subHeading.replace(
+            new RegExp(`>${parentNum}\\s*<\\/text>`),
+            `>${parentNum}.${subCounter}</text>`
+          );
+        }
       } else {
         // Single chunk but oversized: keep as ## (no parent needed)
         subHeading = sec.heading;

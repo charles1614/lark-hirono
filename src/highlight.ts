@@ -48,6 +48,11 @@ function splitTableRow(line: string): string[] {
   return parts;
 }
 
+/** Escape pipes within cell content for markdown table syntax. */
+function escapeCellPipes(cell: string): string {
+  return cell.replace(/\|/g, "\\|");
+}
+
 // ─── Extract ────────────────────────────────────────────────────────────
 
 /**
@@ -181,7 +186,7 @@ export function highlightApply(
           // No fallback — if LLM-selected keyword doesn't match the title text,
           // skip it. Only exact matches should be highlighted.
         }
-        outLines.push(cells.join("|"));
+        outLines.push(cells.map(escapeCellPipes).join("|"));
       } else {
         outLines.push(line);
       }

@@ -118,16 +118,23 @@ function splitOversizedSections(md: string): string {
     const preamble = sec.rows.slice(0, headerIdx + 1);
     const dataRows = sec.rows.slice(headerIdx + 1);
     const totalChunks = Math.ceil(dataRows.length / CHUNK_ROWS);
+    // Emit parent heading only when there are 2+ chunks
+    if (totalChunks > 1) {
+      out.push(sec.heading);
+    }
     for (let i = 0; i < dataRows.length; i += CHUNK_ROWS) {
       const chunk = dataRows.slice(i, i + CHUNK_ROWS);
-      let heading = sec.heading;
+      let subHeading: string;
       if (totalChunks > 1) {
-        heading = sec.heading.replace(
-          /^(## .+?)(\s+\{.*\})?$/,
-          `$1 [${i + 1}-${Math.min(i + CHUNK_ROWS, dataRows.length)}]$2`
+        subHeading = sec.heading.replace(
+          /^## (.+?)(\s+\{.*\})?$/,
+          `### $1 [${i + 1}-${Math.min(i + CHUNK_ROWS, dataRows.length)}]$2`
         );
+      } else {
+        // Single chunk but oversized: keep as ## (no parent needed)
+        subHeading = sec.heading;
       }
-      out.push(heading, ...preamble, ...chunk);
+      out.push(subHeading, ...preamble, ...chunk);
     }
   }
   return out.join("\n");

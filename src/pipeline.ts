@@ -141,7 +141,7 @@ function splitOversizedSections(md: string): string {
         if (parentNum) {
           subHeading = subHeading.replace(
             new RegExp(`>${parentNum}\\s*<\\/text>`),
-            `>${parentNum}.${subCounter}</text>`
+            `>${parentNum}.${subCounter} </text>`
           );
         }
       } else {

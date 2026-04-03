@@ -159,24 +159,28 @@ export class LarkCli {
     }
   }
   appendDoc(docId: string, markdown: string): boolean {
-    try {
-      const args = [
-        "docs",
-        "+update",
-        "--doc", docId,
-        "--mode", "append",
-        "--markdown", markdown,
-      ];
-      const out = execFileSync(this.cli, args, {
-        encoding: "utf-8",
-        timeout: 120_000,
-        maxBuffer: 10 * 1024 * 1024,
-      });
-      const parsed = JSON.parse(out);
-      return parsed?.ok === true || parsed?.code === 0;
-    } catch {
-      return false;
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const args = [
+          "docs",
+          "+update",
+          "--doc", docId,
+          "--mode", "append",
+          "--markdown", markdown,
+        ];
+        const out = execFileSync(this.cli, args, {
+          encoding: "utf-8",
+          timeout: 120_000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
+        const parsed = JSON.parse(out);
+        return parsed?.ok === true || parsed?.code === 0;
+      } catch {
+        // Retry on failure
+      }
     }
+    return false;
   }
 
   /** Generic POST request. */

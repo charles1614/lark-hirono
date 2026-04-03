@@ -272,17 +272,13 @@ async function main() {
       if (currentHeading) { lastHeading = currentHeading; }
       else if (lastHeading) { chunkMd = lastHeading + "\n\n" + chunkMd; }
 
-      let success = false;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        if (cli.appendDoc(docId, chunkMd)) { success = true; break; }
-        await sleep(3000 * (attempt + 1));
+      // No retry: MCP timeouts are infra issues but Feishu may have already
+      // uploaded the chunk successfully. Retrying would cause duplicate content.
+      if (!cli.appendDoc(docId, chunkMd)) {
+        log(args.verbose, `WARNING: Chunk ${i}/${chunks.length - 1} append returned failure (may still have been uploaded)`);
       }
-      if (!success) {
-        log(args.verbose, `ERROR: Chunk ${i}/${chunks.length - 1} failed after retries`);
-        process.exit(1);
-      }
-      // Cool down between appends
-      if (i < chunks.length - 1) await sleep(1000);
+      // 2s cooldown between appends to reduce MCP transport overload
+      await sleep(2000);
       log(args.verbose, `Appended chunk ${i}/${chunks.length - 1}`);
     }
   }

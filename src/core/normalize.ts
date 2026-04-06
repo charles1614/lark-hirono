@@ -256,7 +256,25 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
     return block;
   }).join("");
 
-  // 5. Normalize heading numbers (Chinese ordinals → Arabic, fix duplicates)
+  // 5. Fix Feishu markdown parsing issue with --- separators
+  // Feishu interprets text before --- as a heading unless there's a blank line
+  // Fix: Ensure blank line before --- separator
+  // Match pattern: text\n--- and replace with text\n\n---\n
+  const allLines = result.split("\n");
+  const fixed: string[] = [];
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+    const nextLine = allLines[i + 1] || "";
+    fixed.push(line);
+    // If current line is text (not blank) and next line is ---
+    if (line.trim() && line.trim() !== "---" && nextLine.trim() === "---") {
+      // Add blank line before ---
+      fixed.push("");
+    }
+  }
+  result = fixed.join("\n");
+
+  // 6. Normalize heading numbers (Chinese ordinals → Arabic, fix duplicates)
   result = normalizeHeadingNumbers(result);
 
   return { text: result, report };

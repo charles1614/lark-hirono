@@ -134,12 +134,32 @@ export function preprocessMarkdown(
   let headingCounter = 0;
   const out = lines.map((line, idx) => {
     if (inCodeBlock.has(idx)) return line;
+
+    // Check BEFORE transformHeading if already has number
+    const preTrimmed = line.trim();
+    const preHeadingMatch = preTrimmed.match(/^(#{1,6}) (.+)/);
+    if (preHeadingMatch) {
+      const level = preHeadingMatch[1].length;
+      const content = preHeadingMatch[2];
+      const numMatch = content.match(/^(\d+)\.?\s/);
+      if (numMatch && level === numberLevel) {
+        // Update counter to this number, then skip processing
+        headingCounter = parseInt(numMatch[1]);
+        // Still apply transformHeading for other formatting
+        return transformHeading(line, rainbowMap);
+      }
+    }
+
     const transformed = transformHeading(line, rainbowMap);
     const trimmed = transformed.trim();
-    // Check if this heading needs sequential numbering
-    const headingMatch = trimmed.match(/^(#{1,6}) (?!<text)/);
+    // Skip if already has <text> tag
+    if (/^#{1,6} <text/.test(trimmed)) return transformed;
+
+    const headingMatch = trimmed.match(/^(#{1,6}) (.+)/);
     if (headingMatch) {
       const level = headingMatch[1].length;
+      const content = headingMatch[2];
+
       if (level === numberLevel) {
         headingCounter++;
         const colors = rainbowMap[level] ?? rainbowMap[2] ?? { numberColor: "blue", bgColor: "light-orange" };

@@ -66,15 +66,21 @@ export function computePatches(
   const bgRainbow = bgMode === "dark" ? DARK_BG_RAINBOW : LIGHT_BG_RAINBOW;
   const patches: Patch[] = [];
 
+  // Count H1 blocks (block_type 3)
+  const h1Count = blocks.filter(b => b.block_type === 3).length;
+  const skipH1 = h1Count === 1; // Single H1 = title, skip it
+
   // Find minimum heading level in body
   let minHeadingLevel = Infinity;
   for (const b of blocks) {
     const bt = b.block_type as number;
     if (bt >= 3 && bt <= 11) {
+      // Skip H1 if it's the only one (treat as title)
+      if (skipH1 && bt === 3) continue;
       minHeadingLevel = Math.min(minHeadingLevel, bt - 2);
     }
   }
-  if (minHeadingLevel === Infinity) minHeadingLevel = 1;
+  if (minHeadingLevel === Infinity) minHeadingLevel = skipH1 ? 2 : 1;
 
   for (const b of blocks) {
     const bt = b.block_type as number;
@@ -82,6 +88,9 @@ export function computePatches(
 
     // Heading blocks (type 3-11)
     if (bt >= 3 && bt <= 11) {
+      // Skip H1 if it's the only one (treat as title, don't color it)
+      if (skipH1 && bt === 3) continue;
+
       const level = bt - 2;
       const depth = level - minHeadingLevel; // 0-based depth
       const bg = bgRainbow[depth] ?? bgRainbow[bgRainbow.length - 1];

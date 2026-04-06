@@ -45,7 +45,7 @@ export function normalizeHeadingNumbers(md: string): string {
   for (let i = 0; i < lines.length; i++) {
     if (inCodeBlock.has(i)) continue;
     const hm = lines[i].match(/^(#{1,6})\s+(.+)$/);
-    if (!hm || !/^#{1,2}\s/.test(lines[i])) continue;
+    if (!hm) continue;
 
     const hashes = hm[1];
     let content = hm[2];
@@ -85,18 +85,59 @@ export function normalizeHeadingNumbers(md: string): string {
     }
   }
 
-  // Second pass: assign sequential numbers
+  // Second pass: assign sequential numbers with hierarchy tracking
   const assignedNumbers = new Map<number, string>(); // lineIdx → assigned number
-  let h2Num = 0;
+  const levelCounters: Record<number, number> = {}; // Track counters per heading level
+  const lastParentNumber: Record<number, string> = {}; // Track parent numbers for sub-headings
+
+  // Chinese ordinal to number mapping
+  const cnToNum: Record<string, number> = {
+    "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+    "甲": 1, "乙": 2, "丙": 3, "丁": 4, "戊": 5, "己": 6, "庚": 7, "辛": 8, "壬": 9, "癸": 10,
+  };
 
   for (const h of headings) {
-    if (h.hasExplicitNum || h.isChineseOrdinal) {
-      // Both explicit numbers and Chinese ordinals get sequential numbering
-      h2Num++;
-      assignedNumbers.set(h.lineIdx, `${h2Num}.`);
-    } else {
-      // No number heading → pass through
-      assignedNumbers.set(h.lineIdx, "");
+    const level = h.hashes.length;
+
+    if (level === 1 || level === 2) {
+      // H1 and H2 headings
+      if (h.isChineseOrdinal) {
+        // Chinese ordinals: use their numeric value
+        const cnOrdinalMatch = h.content.match(/^[*]*([一二三四五六七八九十]+|[甲乙丙丁戊己庚辛壬癸])、/);
+        const cnNum = cnOrdinalMatch ? (cnToNum[cnOrdinalMatch[1]] || 1) : 1;
+        assignedNumbers.set(h.lineIdx, `${cnNum}.`);
+        levelCounters[level] = cnNum;
+        lastParentNumber[level] = `${cnNum}`;
+        // Reset counters for deeper levels when we hit a new H2
+        for (let l = level + 1; l <= 6; l++) {
+          levelCounters[l] = 0;
+        }
+      } else if (h.hasExplicitNum) {
+        // Explicit numbers get renumbered sequentially
+        const prevNum = levelCounters[level] || 0;
+        const newNum = prevNum + 1;
+        assignedNumbers.set(h.lineIdx, `${newNum}.`);
+        levelCounters[level] = newNum;
+        lastParentNumber[level] = `${newNum}`;
+        for (let l = level + 1; l <= 6; l++) {
+          levelCounters[l] = 0;
+        }
+      } else {
+        // No number heading → pass through
+        assignedNumbers.set(h.lineIdx, "");
+      }
+    } else if (level >= 3) {
+      // H3+ headings get hierarchical numbers (e.g., 9.1, 9.2)
+      const parentLevel = 2; // Parent is always H2 for now
+      if (!levelCounters[level]) levelCounters[level] = 0;
+      levelCounters[level]++;
+      const parentNum = lastParentNumber[parentLevel] || "";
+      if (parentNum) {
+        assignedNumbers.set(h.lineIdx, `${parentNum}.${levelCounters[level]}`);
+      } else {
+        // No parent number, pass through
+        assignedNumbers.set(h.lineIdx, "");
+      }
     }
   }
 

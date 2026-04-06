@@ -191,6 +191,48 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   // 4b. Links (global — safe everywhere).
   //     <p>/<\/p> are preserved inside table cells — lark-table.ts handles them.
   result = result.replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
+
+  // 4c. Add blank lines between consecutive non-blank, non-special lines
+  //     to preserve paragraph breaks in Feishu
+  const normalLines = result.split("\n");
+  const withBreaks: string[] = [];
+  for (let i = 0; i < normalLines.length; i++) {
+    const line = normalLines[i];
+    const trimmed = line.trim();
+    const nextTrimmed = normalLines[i + 1]?.trim() || "";
+
+    withBreaks.push(line);
+
+    // Add blank line after non-empty lines that:
+    // - are not headings, list items, code blocks, blockquotes, or separators
+    // - followed by another non-empty line of the same type
+    if (
+      trimmed &&
+      nextTrimmed &&
+      !trimmed.startsWith("#") &&
+      !trimmed.startsWith("-") &&
+      !trimmed.startsWith("*") &&
+      !trimmed.startsWith(">") &&
+      !trimmed.startsWith("```") &&
+      !trimmed.startsWith("---") &&
+      !trimmed.startsWith("|") &&
+      !nextTrimmed.startsWith("#") &&
+      !nextTrimmed.startsWith("-") &&
+      !nextTrimmed.startsWith("*") &&
+      !nextTrimmed.startsWith(">") &&
+      !nextTrimmed.startsWith("```") &&
+      !nextTrimmed.startsWith("---") &&
+      !nextTrimmed.startsWith("|")
+    ) {
+      // Check if this looks like a short standalone line (paragraph break candidate)
+      // Heuristic: lines < 80 chars that end without punctuation
+      if (trimmed.length < 80 && !/[。！？.!?]$/.test(trimmed)) {
+        withBreaks.push("");
+      }
+    }
+  }
+  result = withBreaks.join("\n");
+
   // Collapse excess blank lines (3+ = 2 is too many; allow paragraph breaks)
   result = result.replace(/\n{4,}/g, "\n\n");
   // 4c-d. Remaining inline HTML — skip code fences and lark-table blocks

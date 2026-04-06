@@ -256,6 +256,7 @@ export function injectOpeningCallout(
 
   // Extract description from first paragraph before first heading
   let desc = "";
+  let descLineIdx = -1;
   if (description) {
     desc = description;
   } else {
@@ -264,6 +265,7 @@ export function injectOpeningCallout(
       const trimmed = lines[i].trim();
       if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("---") && !trimmed.startsWith(">")) {
         desc = trimmed;
+        descLineIdx = i;
         break;
       }
     }
@@ -279,7 +281,16 @@ export function injectOpeningCallout(
   ];
 
   const newLines = [...lines];
-  newLines.splice(insertIdx, 0, ...calloutLines);
+
+  // Remove the original paragraph line if we extracted it
+  if (descLineIdx >= 0) {
+    newLines.splice(descLineIdx, 1);
+    // Adjust insertIdx if we removed a line before it
+    const adjustedInsertIdx = descLineIdx < insertIdx ? insertIdx - 1 : insertIdx;
+    newLines.splice(adjustedInsertIdx, 0, ...calloutLines);
+  } else {
+    newLines.splice(insertIdx, 0, ...calloutLines);
+  }
 
   return { text: newLines.join("\n"), injected: true };
 }

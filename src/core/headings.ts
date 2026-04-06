@@ -50,13 +50,18 @@ export function normalizeHeadingNumbers(md: string): string {
     const hashes = hm[1];
     let content = hm[2];
 
+    // Check for Chinese ordinal with optional bold markers
+    // Matches: 一、Title  or  **一、Title**
     const cnMatch = content.match(
-      /^([一二三四五六七八九十]+|[甲乙丙丁戊己庚辛壬癸])、\s*(.+)/
+      /^(\*{0,2})([一二三四五六七八九十]+|[甲乙丙丁戊己庚辛壬癸])、\s*(.+?)(\*{0,2})$/
     );
     if (cnMatch) {
+      const boldPrefix = cnMatch[1];
+      const boldSuffix = cnMatch[4];
+      const title = cnMatch[3];
       headings.push({
         lineIdx: i, hashes, content, isChineseOrdinal: true,
-        hasExplicitNum: false, title: cnMatch[2],
+        hasExplicitNum: false, title: boldPrefix && boldSuffix ? `**${title}**` : title,
       });
       continue;
     }

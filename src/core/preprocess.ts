@@ -112,13 +112,28 @@ export function preprocessMarkdown(
     if (lines[0] === "") lines = lines.slice(1);
   }
 
+  // Build set of lines inside code blocks to exclude from heading detection
+  const inCodeBlock = new Set<number>();
+  let inside = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trimStart().startsWith("```")) {
+      inside = !inside;
+      inCodeBlock.add(i);
+    } else if (inside) {
+      inCodeBlock.add(i);
+    }
+  }
+
   // Scan: count H1 headings to decide numbering start level
-  const h1Count = lines.filter((l) => /^# (?!#)/.test(l.trim())).length;
+  const h1Count = lines.filter((l, i) =>
+    !inCodeBlock.has(i) && /^# (?!#)/.test(l.trim())
+  ).length;
   const numberLevel = h1Count <= 1 ? 2 : 1; // single H1 = title, skip it
 
   // Track heading counter for sequential blue numbering
   let headingCounter = 0;
-  const out = lines.map((line) => {
+  const out = lines.map((line, idx) => {
+    if (inCodeBlock.has(idx)) return line;
     const transformed = transformHeading(line, rainbowMap);
     const trimmed = transformed.trim();
     // Check if this heading needs sequential numbering

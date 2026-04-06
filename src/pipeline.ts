@@ -1,5 +1,5 @@
 /**
- * Pipeline — main orchestration: analyze → normalize → preprocess → create → patch → verify.
+ * Pipeline — main orchestration: analyze → normalize → narrative-optimize → preprocess → create → patch → verify.
  */
 
 import { readFileSync } from "node:fs";
@@ -14,6 +14,7 @@ import { splitMarkdown } from "./core/chunked.js";
 import { convertToLarkTables } from "./core/lark-table.js";
 import { verifyDoc, formatReport } from "./verify/verify.js";
 import { log, logError, initLogging } from "./logging.js";
+import { optimizeNarrative, stripChatbotTail } from "./core/narrative.js";
 
 // ─── Arg Parsing ────────────────────────────────────────────────────────
 
@@ -30,6 +31,12 @@ export interface PipelineArgs {
   analyzeOnly: boolean;
   dryRun: boolean;
   verbose: boolean;
+  // Optimize workflow support
+  mode?: "create" | "update";
+  docId?: string;
+  fetch?: boolean;
+  createNew?: boolean;       // --new: create sibling doc
+  sourceDocId?: string;      // original doc ID (used for --new to fetch)
 }
 
 export interface PipelineResult {
@@ -118,22 +125,58 @@ function splitOversizedSections(md: string): string {
 
 export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   initLogging(args.verbose);
+  const mode = args.mode ?? "create";
 
-  // 1. Read source and extract title
-  const src = readFileSync(args.input, "utf-8");
+  // 1. Read source or fetch from Feishu
+  let src: string;
+  const fetchDocId = args.sourceDocId ?? args.docId;
+  if (mode === "update" && args.fetch && args.docId) {
+    const cli = new LarkCli({ retries: 3 });
+    const fetched = cli.fetchDoc(args.docId);
+    if (!fetched) {
+      logError("Failed to fetch document from Feishu");
+      process.exit(1);
+    }
+    const { text: cleaned, stripped } = stripChatbotTail(fetched);
+    src = cleaned;
+    log(`Fetched doc ${args.docId}: ${src.split("\n").length} lines${stripped ? " (chatbot tail stripped)" : ""}`);
+  } else if (args.createNew && fetchDocId) {
+    const cli = new LarkCli({ retries: 3 });
+    const fetched = cli.fetchDoc(fetchDocId);
+    if (!fetched) {
+      logError("Failed to fetch source document from Feishu");
+      process.exit(1);
+    }
+    const { text: cleaned, stripped } = stripChatbotTail(fetched);
+    src = cleaned;
+    log(`Fetched source doc ${fetchDocId}: ${src.split("\n").length} lines${stripped ? " (chatbot tail stripped)" : ""}`);
+  } else if (args.input) {
+    src = readFileSync(args.input, "utf-8");
+  } else {
+    logError("Missing input: provide --input file or --doc with --fetch");
+    process.exit(1);
+  }
 
   let title = args.title;
-  if (!title) {
+  if (!title && mode === "create") {
+    const h1Match = src.match(/^#\s+(.+)$/m);
+    if (h1Match) {
+      const base = h1Match[1].replace(/\s*\{.*\}/, "").trim();
+      title = args.createNew ? `${base} (optimized)` : base;
+    }
+  } else if (!title && mode === "update") {
+    // Extract title from fetched doc for logging
     const h1Match = src.match(/^#\s+(.+)$/m);
     if (h1Match) title = h1Match[1].replace(/\s*\{.*\}/, "").trim();
   }
+  if (args.createNew) title = title || "optimized";
   log(`Title: ${title}`);
 
   // 2. Normalize (HTML → markdown)
   const { text: normalized, report: normReport } = normalizeMarkdown(src);
   log(`Normalized: table_sep=${normReport.tableSeparatorFixed}`);
 
-  // 3. Analyze
+  // 3. Analyze document type
   const analysis = analyzeMarkdown(normalized);
   if (args.verbose || args.analyzeOnly) {
     console.log(JSON.stringify({
@@ -144,19 +187,32 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   }
   if (args.analyzeOnly) return { ok: true };
 
+  // 2.5. Narrative document optimization (non-table docs)
+  let narrativeMd = normalized;
+  if (analysis.documentType === "narrative") {
+    const result = optimizeNarrative(normalized, { calloutIcon: "bulb" });
+    narrativeMd = result.text;
+    if (result.stats.calloutInjected) log(`Narrative: opening callout injected`);
+    if (result.stats.codeBlocksTagged > 0) log(`Narrative: ${result.stats.codeBlocksTagged} code blocks tagged`);
+    if (result.stats.blockquotesConverted > 0) log(`Narrative: ${result.stats.blockquotesConverted} blockquotes → callouts`);
+    if (result.stats.signpostsBolded > 0) log(`Narrative: ${result.stats.signpostsBolded} signpost phrases bolded`);
+    if (result.stats.separatorsAdded > 0) log(`Narrative: ${result.stats.separatorsAdded} section separators added`);
+  }
+
   // 4. Lint
-  const warnings = lintMarkdown(normalized);
+  const warnings = lintMarkdown(narrativeMd);
   if (warnings.length > 0 && args.verbose) {
     for (const w of warnings) log(`⚠ ${w}`);
   }
 
   // 5. Preprocess (heading numbers already normalized in step 2)
-  let md = preprocessMarkdown(normalized, { stripTitle: args.stripTitle });
+  let md = preprocessMarkdown(narrativeMd, { stripTitle: args.stripTitle });
   md = splitOversizedSections(md);
   log(`After section split: ${md.split("\n").length} lines`);
 
   // 6. Highlight (MUST run before convertToLarkTables — works on markdown tables only)
-  const highlightKeywordFile = args.input + ".selected_keywords.json";
+  const kwPathBase = args.input || args.docId || "doc";
+  const highlightKeywordFile = kwPathBase + ".selected_keywords.json";
   let hasKeywordFile = false;
   try { readFileSync(highlightKeywordFile); hasKeywordFile = true; } catch { /* no file */ }
 
@@ -172,9 +228,11 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
       md = highlighted;
       log(`Highlight: applied keywords`);
     } else {
-      const batchPaths = saveBatches(batches, args.input);
+      const batchPaths = saveBatches(batches, kwPathBase);
       log(`Highlight: saved ${batchPaths.length} batch file(s) for LLM selection`);
-      log(`Highlight: waiting for ${highlightKeywordFile}`);
+      if (mode === "create") {
+        log(`Highlight: waiting for ${highlightKeywordFile}`);
+      }
     }
   }
 
@@ -196,8 +254,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   const cli = new LarkCli({ retries: 3 });
   try { cli.status(); } catch (err) { logError(`Auth error: ${(err as Error).message}`); process.exit(1); }
 
-  // 9. Create document
-  log("Creating document...");
+  // 9. Create or update document
   const MAX_BYTES = 200_000;
   const mdBytes = Buffer.byteLength(md, "utf-8");
   log(`Markdown size: ${Math.round(mdBytes / 1024)} KB`);
@@ -205,38 +262,49 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   let docId: string;
   let docUrl: string;
 
-  if (mdBytes <= MAX_BYTES) {
-    const created = cli.createDoc(title, md, args.wikiSpace, args.wikiNode);
-    if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
-    docId = created.doc_id;
-    docUrl = created.url;
+  // --new always creates a new doc, never overwrites
+  if (mode === "update" && args.docId && !args.createNew) {
+    log(`Updating document ${args.docId}...`);
+    const updated = cli.updateDoc(args.docId, md);
+    if (!updated) { logError("ERROR: Document update failed"); process.exit(1); }
+    docId = args.docId;
+    docUrl = `https://www.feishu.cn/wiki/${docId}`;
+    log("Update complete");
   } else {
-    log("Large doc, using chunked upload...");
-    const chunks = splitMarkdown(md, { maxLines: 200, maxBytes: MAX_BYTES });
-    log(`Split into ${chunks.length} chunks`);
+    log("Creating document...");
+    if (mdBytes <= MAX_BYTES) {
+      const created = cli.createDoc(title, md, args.wikiSpace, args.wikiNode);
+      if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
+      docId = created.doc_id;
+      docUrl = created.url;
+    } else {
+      log("Large doc, using chunked upload...");
+      const chunks = splitMarkdown(md, { maxLines: 200, maxBytes: MAX_BYTES });
+      log(`Split into ${chunks.length} chunks`);
 
-    const created = cli.createDoc(title, chunks[0].markdown, args.wikiSpace, args.wikiNode);
-    if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
-    docId = created.doc_id;
-    docUrl = created.url;
-    log(`Created chunk 0/${chunks.length - 1}: ${docId}`);
+      const created = cli.createDoc(title, chunks[0].markdown, args.wikiSpace, args.wikiNode);
+      if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
+      docId = created.doc_id;
+      docUrl = created.url;
+      log(`Created chunk 0/${chunks.length - 1}: ${docId}`);
 
-    let lastHeading = "";
-    const headingFromChunk = (m: string): string =>
-      m.match(/^(#{1,6}\s+.+)$/m)?.[1] ?? "";
-    lastHeading = headingFromChunk(chunks[0].markdown);
+      let lastHeading = "";
+      const headingFromChunk = (m: string): string =>
+        m.match(/^(#{1,6}\s+.+)$/m)?.[1] ?? "";
+      lastHeading = headingFromChunk(chunks[0].markdown);
 
-    for (let i = 1; i < chunks.length; i++) {
-      let chunkMd = chunks[i].markdown;
-      const currentHeading = headingFromChunk(chunkMd);
-      if (currentHeading) { lastHeading = currentHeading; }
-      else if (lastHeading) { chunkMd = lastHeading + "\n\n" + chunkMd; }
+      for (let i = 1; i < chunks.length; i++) {
+        let chunkMd = chunks[i].markdown;
+        const currentHeading = headingFromChunk(chunkMd);
+        if (currentHeading) { lastHeading = currentHeading; }
+        else if (lastHeading) { chunkMd = lastHeading + "\n\n" + chunkMd; }
 
-      if (!cli.appendDoc(docId, chunkMd)) {
-        log(`WARNING: Chunk ${i}/${chunks.length - 1} append returned failure (may still have been uploaded)`);
+        if (!cli.appendDoc(docId, chunkMd)) {
+          log(`WARNING: Chunk ${i}/${chunks.length - 1} append returned failure (may still have been uploaded)`);
+        }
+        await sleep(2000);
+        log(`Appended chunk ${i}/${chunks.length - 1}`);
       }
-      await sleep(2000);
-      log(`Appended chunk ${i}/${chunks.length - 1}`);
     }
   }
 
@@ -265,7 +333,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   // 12. Verify
   let verifyReport: string | undefined;
   if (args.verify) {
-    const report = verifyDoc(cli, docId);
+    const report = verifyDoc(cli, docId, { hasTables: analysis.documentType === "narrative" ? false : true, documentType: analysis.documentType });
     verifyReport = formatReport(report);
     console.log(verifyReport);
   }

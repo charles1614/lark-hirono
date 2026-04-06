@@ -79,9 +79,16 @@ function defaultContentChecks() {
   };
 }
 
-export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
+export interface PipelineContext {
+  hasTables?: boolean;
+  documentType?: string;
+}
+
+export function verifyDoc(cli: LarkCli, docId: string, ctx?: PipelineContext): VerifyReport {
   const blocks = cli.getBlocks(docId);
   const md = cli.fetchDoc(docId) ?? "";
+
+  const isNarrative = ctx?.documentType === "narrative" || ctx?.hasTables === false;
 
   const report: VerifyReport = {
     totalBlocks: blocks.length,
@@ -195,7 +202,7 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     // Block-level
     {
       name: "Headings at root level",
-      pass: report.headingRootCount >= 10,
+      pass: report.headingRootCount >= (isNarrative ? 5 : 10),
       detail: `${report.headingRootCount}/${report.headingCount} root-level`,
     },
     {
@@ -205,8 +212,8 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     },
     {
       name: "Tables present",
-      pass: report.tableCount > 0,
-      detail: `${report.tableCount} tables`,
+      pass: isNarrative ? true : report.tableCount > 0,
+      detail: isNarrative ? `narrative doc, skipping` : `${report.tableCount} tables`,
     },
     {
       name: "Native bullets",
@@ -220,13 +227,13 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     },
     {
       name: "Red highlights",
-      pass: report.redHighlightCount >= 2,
-      detail: `${report.redHighlightCount} highlights`,
+      pass: isNarrative ? true : report.redHighlightCount >= 2,
+      detail: isNarrative ? `narrative doc, skipping` : `${report.redHighlightCount} highlights`,
     },
     {
       name: "Bold headers",
-      pass: report.boldHeaderCount >= 7,
-      detail: `${report.boldHeaderCount} bold headers`,
+      pass: isNarrative ? true : report.boldHeaderCount >= 7,
+      detail: isNarrative ? `narrative doc, skipping` : `${report.boldHeaderCount} bold headers`,
     },
     {
       name: "No residual HTML (blocks)",
@@ -241,8 +248,8 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     },
     {
       name: "Lark tables (md)",
-      pass: cc.hasLarkTables,
-      detail: cc.hasLarkTables ? "present" : "missing",
+      pass: isNarrative ? true : cc.hasLarkTables,
+      detail: isNarrative ? `narrative doc, skipping` : cc.hasLarkTables ? "present" : "missing",
     },
     {
       name: "No residual HTML (md)",
@@ -251,8 +258,8 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     },
     {
       name: "Links preserved (md)",
-      pass: cc.linksPreserved,
-      detail: cc.linksPreserved ? "present" : "missing",
+      pass: isNarrative ? true : cc.linksPreserved,
+      detail: cc.linksPreserved ? "present" : isNarrative ? "narrative doc" : "missing",
     },
     {
       name: "Bold preserved (md)",
@@ -261,8 +268,8 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     },
     {
       name: "Data columns (md)",
-      pass: cc.codeColumnPresent && cc.titleColumnPresent,
-      detail: cc.codeColumnPresent && cc.titleColumnPresent ? "Code + Title" : "missing",
+      pass: isNarrative ? true : cc.codeColumnPresent && cc.titleColumnPresent,
+      detail: isNarrative ? `narrative doc, skipping` : cc.codeColumnPresent && cc.titleColumnPresent ? "Code + Title" : "missing",
     },
     {
       name: "Bullet items (md)",
@@ -271,8 +278,8 @@ export function verifyDoc(cli: LarkCli, docId: string): VerifyReport {
     },
     {
       name: "Links in cells (md)",
-      pass: cc.linksInCells,
-      detail: cc.linksInCells ? "present" : "missing",
+      pass: isNarrative ? true : cc.linksInCells,
+      detail: isNarrative ? `narrative doc, skipping` : cc.linksInCells ? "present" : "missing",
     },
     {
       name: "Chinese text (md)",

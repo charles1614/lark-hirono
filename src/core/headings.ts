@@ -30,7 +30,20 @@ export function normalizeHeadingNumbers(md: string): string {
 
   const headings: HeadingInfo[] = [];
 
+  // Build set of lines inside code blocks to exclude
+  const inCodeBlock = new Set<number>();
+  let inside = false;
   for (let i = 0; i < lines.length; i++) {
+    if (/^\s*```/.test(lines[i])) {
+      inside = !inside;
+      inCodeBlock.add(i);
+    } else if (inside) {
+      inCodeBlock.add(i);
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    if (inCodeBlock.has(i)) continue;
     const hm = lines[i].match(/^(#{1,6})\s+(.+)$/);
     if (!hm || !/^#{1,2}\s/.test(lines[i])) continue;
 

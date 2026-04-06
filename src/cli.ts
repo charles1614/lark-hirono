@@ -6,8 +6,7 @@
  */
 
 import { execSync as execSyncShell, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 
 // ─── CLI Discovery ──────────────────────────────────────────────────────
 
@@ -262,42 +261,42 @@ export class LarkCli {
     return result !== null && result.code === 0;
   }
 
-  /** Fetch doc content as markdown. Streams to file to handle large docs (>1MB). */
+  
+  /** Replace doc content with new markdown. */
+  updateDoc(docId: string, markdown: string): boolean {
+    try {
+      const args = [
+        'docs', '+update',
+        '--doc', docId,
+        '--mode', 'overwrite',
+        '--markdown', markdown,
+      ];
+      execFileSync(this.cli, args, {
+        encoding: 'utf-8',
+        timeout: 300_000,
+        maxBuffer: 50 * 1024 * 1024,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /** Fetch doc content as markdown. Parses JSON stdout from lark-cli. */
   fetchDoc(docId: string): string | null {
-    const tmpDir = mkdtempSync(`${tmpdir()}/larkcli-fetch-`);
-    const tmpFile = `${tmpDir}/${docId}.md`;
-
     try {
       const out = execFileSync(this.cli, [
         "docs", "+fetch", "--doc", docId,
-        "--output", tmpFile,
       ], {
         encoding: "utf-8",
         timeout: 120_000,
         maxBuffer: 50 * 1024 * 1024,
+        stdio: ["pipe", "pipe", "pipe"],
       });
-
-      // Use file output (--output flag) if lark-cli supports it
-      if (existsSync(tmpFile)) {
-        const md = readFileSync(tmpFile, "utf-8");
-        return md;
-      }
+      const parsed = JSON.parse(out);
+      if (parsed?.data?.markdown) return parsed.data.markdown;
+      return null;
     } catch {
-      // Fallback: capture to stdout with large buffer
-      try {
-        const out = execFileSync(this.cli, ["docs", "+fetch", "--doc", docId], {
-          encoding: "utf-8",
-          timeout: 120_000,
-          maxBuffer: 50 * 1024 * 1024,
-        });
-        const parsed = JSON.parse(out);
-        if (parsed?.data?.markdown) return parsed.data.markdown;
-      } catch {
-        return null;
-      }
-    } finally {
-      try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* swallow */ }
+      return null;
     }
-    return null;
   }
 }

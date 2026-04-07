@@ -11,7 +11,7 @@
  * - Extract candidate sentences → save to JSON
  * - User saves LLM results → apply from JSON
  *
- * Ported from tmp/feishu/references/optimization-guide.md rules.
+ * Ported from skills/lark-hirono/references/optimization-guide.md rules.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -87,7 +87,7 @@ export function tagCodeBlocks(md: string): { text: string; tagged: number } {
 export function hasOpeningCallout(md: string): boolean {
   const lines = md.split("\n");
   for (let i = 0; i < Math.min(lines.length, 15); i++) {
-    if (/\[!callout/.test(lines[i])) return true;
+    if (/<callout/.test(lines[i])) return true;
   }
   return false;
 }
@@ -139,29 +139,32 @@ export function convertBlockquotesToCallouts(md: string): { text: string; conver
       const bqText = bqLines.join("\n").trim();
 
       if (tldrRe.test(bqText)) {
+        const content = bqLines.map((l) => l.replace(/^>\s*/, "")).join("\n");
         out.push(
           ``,
-          `> [!callout icon=bulb bg=2 border=2]`,
-          ``,
-          ...bqLines.map((l) => l.replace(/^>\s*/, "> ")),
+          `<callout emoji="bulb" background-color="light-blue" border-color="light-blue">`,
+          content,
+          `</callout>`,
         );
         converted++;
       } else if (summaryRe.test(bqText)) {
         // Convert to green callout
+        const content = bqLines.map((l) => l.replace(/^>\s*/, "")).join("\n");
         out.push(
           ``,
-          `> [!callout icon=pushpin bg=3 border=3]`,
-          ``,
-          ...bqLines.map((l) => l.replace(/^>\s*/, "> ")),
+          `<callout emoji="pushpin" background-color="light-green" border-color="light-green">`,
+          content,
+          `</callout>`,
         );
         converted++;
       } else if (importantRe.test(bqText)) {
         // Convert to orange callout
+        const content = bqLines.map((l) => l.replace(/^>\s*/, "")).join("\n");
         out.push(
           ``,
-          `> [!callout icon=warning bg=1 border=1]`,
-          ``,
-          ...bqLines.map((l) => l.replace(/^>\s*/, "> ")),
+          `<callout emoji="warning" background-color="light-yellow" border-color="light-yellow">`,
+          content,
+          `</callout>`,
         );
         converted++;
       } else {
@@ -273,9 +276,9 @@ export function injectOpeningCallout(
 
   const calloutLines = [
     "",
-    `> [!callout icon=${icon} bg=2 border=2]`,
-    ``,
-    desc ? `> ${desc}` : "> 本文档概述。",
+    `<callout emoji="${icon}" background-color="light-blue" border-color="light-blue">`,
+    desc ? desc : "本文档概述。",
+    `</callout>`,
     "",
     "",
   ];

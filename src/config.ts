@@ -19,12 +19,12 @@ export interface Config {
 }
 
 export interface ConfigFile {
-  "wiki-space"?: string;
-  "wiki-node"?: string;
-  "bg-mode"?: "light" | "dark";
+  wikiSpace?: string;
+  wikiNode?: string;
+  bgMode?: "light" | "dark";
   highlight?: boolean;
-  "strip-title"?: boolean;
-  "image-dir"?: string;
+  stripTitle?: boolean;
+  imageDir?: string;
 }
 
 // ─── Defaults ───────────────────────────────────────────────────────────
@@ -86,12 +86,12 @@ export function loadConfig(overrides: Partial<Config> = {}, configPath?: string)
   const fileConfig = file ? loadConfigFile(file) : {};
 
   return {
-    wikiSpace: overrides.wikiSpace ?? fileConfig["wiki-space"] ?? DEFAULTS.wikiSpace,
-    wikiNode: overrides.wikiNode ?? fileConfig["wiki-node"] ?? DEFAULTS.wikiNode,
-    bgMode: overrides.bgMode ?? fileConfig["bg-mode"] ?? DEFAULTS.bgMode,
+    wikiSpace: overrides.wikiSpace ?? fileConfig.wikiSpace ?? DEFAULTS.wikiSpace,
+    wikiNode: overrides.wikiNode ?? fileConfig.wikiNode ?? DEFAULTS.wikiNode,
+    bgMode: overrides.bgMode ?? fileConfig.bgMode ?? DEFAULTS.bgMode,
     highlight: overrides.highlight ?? fileConfig.highlight ?? DEFAULTS.highlight,
-    stripTitle: overrides.stripTitle ?? fileConfig["strip-title"] ?? DEFAULTS.stripTitle,
-    imageDir: overrides.imageDir ?? fileConfig["image-dir"] ?? DEFAULTS.imageDir,
+    stripTitle: overrides.stripTitle ?? fileConfig.stripTitle ?? DEFAULTS.stripTitle,
+    imageDir: overrides.imageDir ?? fileConfig.imageDir ?? DEFAULTS.imageDir,
   };
 }
 

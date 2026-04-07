@@ -101,18 +101,7 @@ export function normalizeHeadingNumbers(md: string): string {
 
     if (level === 1 || level === 2) {
       // H1 and H2 headings
-      if (h.isChineseOrdinal) {
-        // Chinese ordinals: use their numeric value
-        const cnOrdinalMatch = h.content.match(/^[*]*([一二三四五六七八九十]+|[甲乙丙丁戊己庚辛壬癸])、/);
-        const cnNum = cnOrdinalMatch ? (cnToNum[cnOrdinalMatch[1]] || 1) : 1;
-        assignedNumbers.set(h.lineIdx, `${cnNum}.`);
-        levelCounters[level] = cnNum;
-        lastParentNumber[level] = `${cnNum}`;
-        // Reset counters for deeper levels when we hit a new H2
-        for (let l = level + 1; l <= 6; l++) {
-          levelCounters[l] = 0;
-        }
-      } else if (h.hasExplicitNum) {
+      if (h.isChineseOrdinal || h.hasExplicitNum) {
         // Explicit numbers get renumbered sequentially
         const prevNum = levelCounters[level] || 0;
         const newNum = prevNum + 1;

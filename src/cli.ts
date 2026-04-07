@@ -16,10 +16,20 @@ const CLI_CANDIDATES = [
   "/usr/local/bin/lark-cli",
 ].filter(Boolean) as string[];
 
+function resolveFromPath(): string | null {
+  try {
+    return execSyncShell("which lark-cli", { encoding: "utf-8" }).trim();
+  } catch {
+    return null;
+  }
+}
+
 export function findLarkCli(): string {
   for (const p of CLI_CANDIDATES) {
     if (existsSync(p)) return p;
   }
+  const fromPath = resolveFromPath();
+  if (fromPath && existsSync(fromPath)) return fromPath;
   throw new Error(
     "lark-cli not found. Install with:\n" +
       "  mkdir /tmp/larkcli && cd /tmp/larkcli\n" +

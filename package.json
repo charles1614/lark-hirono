@@ -26,7 +26,7 @@
     "LICENSE"
   ],
   "bin": {
-    "feishu-custom": "dist/bin/feishu-custom.js"
+    "lark-hirono": "dist/bin/lark-hirono.js"
   },
   "scripts": {
     "build": "tsc",

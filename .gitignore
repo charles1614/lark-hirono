@@ -11,6 +11,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Local config (may contain real workspace IDs)
+lark-hirono.json
+
 # Test output
 /tmp/feishu-*
 

@@ -193,7 +193,7 @@ The optimization guide requires LLM judgment for:
 - `{green:技术术语}` — identifying technical terms
 - Insight callouts — content understanding
 
-These are **not automated** in the pipeline. Use the skill layer (`tmp/feishu/SKILL.md`) for LLM-assisted content optimization.
+These are **not automated** in the pipeline. Use the skill layer (`skills/lark-hirono/SKILL.md`) for LLM-assisted content optimization.
 
 ## License
 

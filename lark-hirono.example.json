@@ -1,0 +1,8 @@
+{
+  "wikiSpace": "YOUR_WIKI_SPACE_ID",
+  "wikiNode": "YOUR_WIKI_NODE_TOKEN",
+  "imageDir": "images",
+  "stripTitle": true,
+  "bgMode": "light",
+  "highlight": true
+}

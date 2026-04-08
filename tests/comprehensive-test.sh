@@ -65,7 +65,10 @@ section_content() {
 
 cd "$PROJECT_DIR"
 echo "Running pipeline --dry-run --no-highlight ..."
-npx tsx src/pipeline.ts "$FIXTURE" "Comprehensive Test" --dry-run --no-highlight > "$OUTPUT" 2>/dev/null
+if ! pnpm exec tsx src/pipeline.ts "$FIXTURE" "Comprehensive Test" --dry-run --no-highlight > "$OUTPUT"; then
+  echo "ERROR: pipeline dry-run failed"
+  exit 1
+fi
 OUTPUT_CONTENT=$(cat "$OUTPUT")
 
 echo ""

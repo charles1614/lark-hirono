@@ -12,6 +12,10 @@ OUTPUT="/tmp/feishu-comprehensive-test-output.md"
 PASS=0
 FAIL=0
 
+# Ensure compiled output is up to date before running tests
+cd "$PROJECT_DIR"
+npm run build --silent 2>/dev/null || { echo "ERROR: build failed"; exit 1; }
+
 check() {
   local desc="$1"; local pattern="$2"
   if echo "$OUTPUT_CONTENT" | grep -qF "$pattern"; then

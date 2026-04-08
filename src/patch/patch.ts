@@ -207,12 +207,17 @@ export function cleanupEmptyTails(
     const t = Date.now();
     while (Date.now() - t < 300) { /* busy wait */ }
 
-    // Recreate without trailing \n
-    const created = cli.createBlockChildren(docId, parentId, [newBlock], index);
+    // Recreate without trailing \n — retry once on failure to avoid orphaned deletion
+    let created = cli.createBlockChildren(docId, parentId, [newBlock], index);
+    if (!created) {
+      const t3 = Date.now();
+      while (Date.now() - t3 < 1000) { /* busy wait */ }
+      created = cli.createBlockChildren(docId, parentId, [newBlock], index);
+    }
     if (created) {
       patched++;
     } else {
-      console.error(`  cleanupEmptyTails: recreate failed at index ${index} in ${parentId}`);
+      console.error(`  cleanupEmptyTails: recreate failed (2 attempts) at index ${index} in ${parentId} — block may be missing`);
     }
 
     // Rate limit

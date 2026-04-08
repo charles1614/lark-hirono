@@ -53,8 +53,8 @@ Determine the action from user intent:
 | User intent | Action |
 |-------------|--------|
 | Upload local markdown to Feishu | `upload <input.md>` |
-| Optimize existing Feishu doc | `optimize SOURCE_URL DEST_URL` |
-| Update Feishu doc from local file | `optimize --doc <id> --input <file.md>` |
+| Optimize existing Feishu doc | Skill workflow (fetch → edit → upload) |
+| Update Feishu doc from local file | `upload <file.md> --wiki-node <parent-node-id>` |
 | Fetch Feishu doc as markdown | `fetch --doc <id>` |
 | Analyze document structure | `analyze <input.md>` |
 | Extract table titles for LLM | `highlight extract <input.md>` |
@@ -126,8 +126,12 @@ Light-touch optimization of a Feishu wiki document: fix errors, repair corruptio
 
 ### Arguments
 
-- **SOURCE_URL**: The document to optimize (content source)
-- **DEST_URL**: The well-formatted reference document (format guide only; new page created under this)
+- **SOURCE_URL**: The Feishu wiki URL to optimize, e.g. `https://my.feishu.cn/wiki/Abc123`
+- **DEST_URL** (optional): A well-formatted reference doc URL; new page is created under its parent node
+
+**Extracting IDs from URLs:**
+- Wiki URL `https://my.feishu.cn/wiki/Abc123XYZ` → doc/node ID is `Abc123XYZ` (the path segment after `/wiki/`)
+- Use this ID for `--doc`, `--wiki-node` CLI flags
 
 ### Workflow
 
@@ -237,9 +241,9 @@ The optimized document should be **80%+ identical** to the original. Changes sho
 
 #### What to change:
 
-1. **Opening callout** — Add a `[!callout]` block at the top if missing
-   - Use `[!callout icon=ICON bg=2 border=2]` — choose an appropriate icon (e.g. `gift`, `bulb`, `bookmark`, `pushpin`, `rocket`, `star`)
-   - Put the document's intro description inside the callout
+1. **Opening callout** — Add a callout block at the top if missing
+   - Format: `<callout emoji="ICON" background-color="light-blue" border-color="light-blue">` — choose an icon (e.g. `gift`, `bulb`, `bookmark`, `pushpin`, `rocket`, `star`)
+   - Put the document's intro description inside, closed with `</callout>`
    - If the source already has an intro blockquote that functions as summary, move its text into the callout
 
 2. **Heading restructuring** — Fix numbering AND hierarchy when needed:
@@ -251,8 +255,10 @@ The optimized document should be **80%+ identical** to the original. Changes sho
 
 3. **Add emphasis** — Apply `{red:...}` and `{green:...}` markers:
    - **Red emphasis**: Key conclusions, results, important claims (10-20 instances in a long doc)
+     - Bold phrase: `{red:**important conclusion**}` → renders bold + red
+     - Plain/code: `{red:term}` or `` {red:`code`} `` → renders red (no bold)
    - **Green emphasis**: First mention of key technical terms (5-10 instances)
-   - Format: `{red:**text**}` for bold red, `{green:text}` for green
+     - Plain/code: `{green:term}` or `` {green:`code`} `` → renders green
 
 4. **Add callouts** — Insert visual callouts for key insights:
    - Use `> 📌 **标题**: ...` for key insights

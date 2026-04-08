@@ -21,7 +21,7 @@ Input:
 - 80/tcp → Nginx
 
 Output:
-## 1. **端口规划** (with blue number)
+## 1 端口规划 (with blue number, no period after number)
 - 80/tcp → Nginx
 ```
 
@@ -60,7 +60,7 @@ Output (after LLM keyword selection):
 
 - ✅ First paragraph extracted to callout
 - ✅ No duplicate paragraph in body
-- ✅ Callout format: `> [!callout icon=bulb bg=2 border=2]`
+- ✅ Callout format: `<callout emoji="bulb" background-color="light-blue" border-color="light-blue">`
 
 ### Tables
 

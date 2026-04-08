@@ -44,7 +44,10 @@ const HTML_IMAGE_RE = /<image\s+url="([^"]+)"([^>]*)\/>/g;
 // ─── Config ─────────────────────────────────────────────────────────────
 
 const TMP_DIR = join(tmpdir(), "feishu_images");
-const CLI_PATH = findLarkCli();
+
+function getCliPath(): string {
+  return findLarkCli();
+}
 
 // ─── Download ───────────────────────────────────────────────────────────
 
@@ -90,7 +93,7 @@ export function uploadImage(localPath: string): string {
   const dir = localPath.substring(0, localPath.lastIndexOf("/")) || ".";
   const basename = localPath.substring(localPath.lastIndexOf("/") + 1);
 
-  const result = execFileSync(CLI_PATH, [
+  const result = execFileSync(getCliPath(), [
     "drive", "+upload",
     "--file", `./${basename}`,
     "--name", filename,

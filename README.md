@@ -18,9 +18,23 @@ Markdown → Styled Feishu (Lark) documents with heading numbering, table conver
 
 ### CLI (npm)
 
+Requires Node.js 20+ and the Feishu CLI dependency used by `lark-hirono`.
+After the package is published to npm, install the latest release with:
+
 ```bash
-npm install -g lark-hirono
-lark-cli auth login --domain docs
+npm install -g lark-hirono@latest
+```
+
+### Install `lark-cli`
+
+`lark-hirono` shells out to `lark-cli` for auth, document APIs, and uploads. Install it first if you do not already have it:
+
+```bash
+mkdir -p /tmp/larkcli
+cd /tmp/larkcli
+npm init -y
+npm install @larksuite/cli
+node node_modules/@larksuite/cli/scripts/install.js
 ```
 
 ### Claude Code Skill
@@ -34,7 +48,16 @@ Then use `/lark-hirono` in Claude Code. See [`skills/lark-hirono/SKILL.md`](skil
 ### Local Development
 
 ```bash
+corepack enable
+corepack prepare pnpm@10.18.3 --activate
 pnpm install
+```
+
+### Authentication
+
+Before using the CLI or skill, authenticate with Feishu:
+
+```bash
 lark-cli auth login --domain docs
 ```
 

@@ -48,9 +48,7 @@ Then use `/lark-hirono` in Claude Code. See [`skills/lark-hirono/SKILL.md`](skil
 ### Local Development
 
 ```bash
-corepack enable
-corepack prepare pnpm@10.18.3 --activate
-pnpm install
+npm install
 ```
 
 ### Authentication

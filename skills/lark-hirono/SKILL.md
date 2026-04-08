@@ -18,24 +18,35 @@ Upload markdown as styled Feishu documents, optimize existing pages, fetch/analy
 This skill's supporting files are located relative to this SKILL.md:
 
 - `references/optimization-guide.md` — Quality standards and reference patterns for document transformation
-- `bin/lark-hirono.ts` — CLI executable (run via `npx tsx`)
 
-Run commands with:
-```bash
-npx tsx <skill-directory>/../../bin/lark-hirono.ts <action> [options]
-```
+## Running the CLI
+
+Determine the correct invocation **once** at the start of each session, trying each step in order:
+
+1. **Global install** — check if `lark-hirono` is on PATH:
+   ```bash
+   command -v lark-hirono
+   ```
+   If found, use `lark-hirono <action> [options]` for all commands.
+
+2. **npx (no install needed)** — if not found globally, run via npx:
+   ```bash
+   npx lark-hirono <action> [options]
+   ```
+   npx will download and cache the package automatically.
+
+3. **Local dev repo** — only if working inside a cloned `lark-hirono` repo (the directory containing `package.json` with `"name": "lark-hirono"`), ensure deps are installed (`npm install`) and run:
+   ```bash
+   npx tsx bin/lark-hirono.ts <action> [options]
+   ```
+
+All examples below use `lark-hirono` as shorthand — substitute the resolved command.
 
 ## Prerequisites
 
-- Node.js 18+
-- npm dependencies installed in project root
+- Node.js 20+
 - `lark-hirono.json` config file (optional, for wiki-space/wiki-node defaults)
 - Feishu authentication (via `lark-cli`)
-
-Install dependencies:
-```bash
-npm install
-```
 
 ## Data Locations
 
@@ -90,7 +101,7 @@ The skill orchestrates **both CLI commands and LLM judgment**:
 Upload local markdown file as styled Feishu document.
 
 ```bash
-npx tsx bin/lark-hirono.ts upload <input.md> [title] [options]
+lark-hirono upload <input.md> [title] [options]
 ```
 
 **Options:**
@@ -109,7 +120,7 @@ npx tsx bin/lark-hirono.ts upload <input.md> [title] [options]
 
 **Example:**
 ```bash
-npx tsx bin/lark-hirono.ts upload my-doc.md "My Document" --wiki-space 123456
+lark-hirono upload my-doc.md "My Document" --wiki-space 123456
 ```
 
 ---
@@ -150,7 +161,7 @@ Follow these tasks in order:
 ### Task 1: Read Source Document
 
 ```bash
-npx tsx <skill-directory>/../../bin/lark-hirono.ts fetch --doc <source-doc-id>
+lark-hirono fetch --doc <source-doc-id>
 ```
 
 Save the full output. This is the document to optimize.
@@ -169,7 +180,7 @@ Save the full output. This is the document to optimize.
 ### Task 2: Read Reference Document
 
 ```bash
-npx tsx <skill-directory>/../../bin/lark-hirono.ts fetch --doc <reference-doc-id>
+lark-hirono fetch --doc <reference-doc-id>
 ```
 
 Save the full output. This is the format reference only — not a content source.
@@ -321,7 +332,7 @@ cat > "$UPLOAD_TMP" << 'OPTIMIZED_CONTENT_END'
 OPTIMIZED_CONTENT_END
 
 # Step 2: Upload from file
-npx tsx <skill-directory>/../../bin/lark-hirono.ts upload "$UPLOAD_TMP" \
+lark-hirono upload "$UPLOAD_TMP" \
   --title "Optimized: [Original Title]" \
   --wiki-node <reference-doc-parent-node-id>
 
@@ -341,7 +352,7 @@ rm -f "$UPLOAD_TMP"
 Retrieve Feishu document as markdown.
 
 ```bash
-npx tsx bin/lark-hirono.ts fetch --doc <doc-id>
+lark-hirono fetch --doc <doc-id>
 ```
 
 **Options:**
@@ -357,7 +368,7 @@ Outputs markdown to stdout.
 Analyze markdown document structure.
 
 ```bash
-npx tsx bin/lark-hirono.ts analyze <input.md>
+lark-hirono analyze <input.md>
 ```
 
 Returns JSON with:
@@ -376,7 +387,7 @@ Extract table titles for LLM keyword selection, or apply keywords to markdown.
 ### Extract
 
 ```bash
-npx tsx bin/lark-hirono.ts highlight extract <input.md> [--batch-size N]
+lark-hirono highlight extract <input.md> [--batch-size N]
 ```
 
 Extracts Code/Title columns from tables, saves as:
@@ -388,7 +399,7 @@ Extracts Code/Title columns from tables, saves as:
 ### Apply
 
 ```bash
-npx tsx bin/lark-hirono.ts highlight apply <input.md> <keywords.json> [--inplace]
+lark-hirono highlight apply <input.md> <keywords.json> [--inplace]
 ```
 
 Wraps keywords in `{red:**keyword**}` tags within table titles.
@@ -402,7 +413,7 @@ Wraps keywords in `{red:**keyword**}` tags within table titles.
 Fetch and verify Feishu document quality.
 
 ```bash
-npx tsx bin/lark-hirono.ts verify --doc <doc-id>
+lark-hirono verify --doc <doc-id>
 ```
 
 Checks:
@@ -421,8 +432,8 @@ Returns JSON report with issues found.
 Feishu authentication management (passthrough to lark-cli).
 
 ```bash
-npx tsx bin/lark-hirono.ts auth login
-npx tsx bin/lark-hirono.ts auth status
+lark-hirono auth login
+lark-hirono auth status
 ```
 
 ---
@@ -447,25 +458,25 @@ npx tsx bin/lark-hirono.ts auth status
 
 ### Upload narrative doc
 ```bash
-npx tsx bin/lark-hirono.ts upload my-article.md
+lark-hirono upload my-article.md
 ```
 
 ### Upload catalog_table doc with keywords
 ```bash
-npx tsx bin/lark-hirono.ts highlight extract catalog.md
+lark-hirono highlight extract catalog.md
 # Send catalog.md.keywords_batch_0.json to LLM
 # Save response as catalog.md.selected_keywords.json
-npx tsx bin/lark-hirono.ts upload catalog.md
+lark-hirono upload catalog.md
 ```
 
 ### Optimize existing Feishu doc
 ```bash
-npx tsx bin/lark-hirono.ts optimize --doc CcKqdWjF2o2UzixXZDecXxvInyc
+lark-hirono optimize --doc CcKqdWjF2o2UzixXZDecXxvInyc
 ```
 
 ### Update Feishu doc from local file
 ```bash
-npx tsx bin/lark-hirono.ts optimize --doc CcKqdWjF2o2UzixXZDecXxvInyc --input local.md
+lark-hirono optimize --doc CcKqdWjF2o2UzixXZDecXxvInyc --input local.md
 ```
 
 ---

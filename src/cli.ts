@@ -32,8 +32,8 @@ export function findLarkCli(): string {
   if (fromPath && existsSync(fromPath)) return fromPath;
   throw new Error(
     "lark-cli not found. Install with:\n" +
-      "  mkdir /tmp/larkcli && cd /tmp/larkcli\n" +
-      "  pnpm init && pnpm add @larksuite/cli\n" +
+      "  mkdir -p /tmp/larkcli && cd /tmp/larkcli\n" +
+      "  npm init -y && npm install @larksuite/cli\n" +
       "  node node_modules/@larksuite/cli/scripts/install.js\n" +
       "Or set LARK_CLI env var."
   );

@@ -8,7 +8,7 @@ import { analyzeMarkdown } from "./core/analyze.js";
 import { normalizeMarkdown, lintMarkdown, boldTableHeaders, unescapePipes } from "./core/normalize.js";
 import { highlightExtract, saveBatches, highlightApply, type KeywordEntry } from "./core/highlight.js";
 import { preprocessMarkdown } from "./core/preprocess.js";
-import { computePatches, executePatches } from "./patch/patch.js";
+import { computePatches, executePatches, cleanupEmptyTails } from "./patch/patch.js";
 import { processImages, extractImageRefs } from "./image/images.js";
 import { splitMarkdown } from "./core/chunked.js";
 import { convertToLarkTables } from "./core/lark-table.js";
@@ -236,9 +236,10 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     }
   }
 
-  // Convert {red:**keyword**} → <text color="red">keyword</text>
+  // Convert {color:content} → <text color="color">content</text>
+  // Handles {red:**bold**}, {green:`code`}, {red:plain}, etc.
   // This runs regardless of --no-highlight so fixture tags always render.
-  md = md.replace(/\{red:\*\*([^*]+)\*\*\}/g, '<text color="red">$1</text>');
+  md = md.replace(/\{(\w+):([^}]+)\}/g, '<text color="$1">$2</text>');
   const redCount = (md.match(/<text color="red">/g) || []).length;
   if (redCount > 0) log(`Red highlights: ${redCount}`);
 
@@ -329,6 +330,10 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     const [ok, total] = executePatches(cli, docId, patches);
     log(`Patch result: ${ok}/${total}`);
   }
+
+  // 11b. Clean up Feishu auto-created trailing empty blocks inside containers
+  const cleaned = cleanupEmptyTails(cli, docId, blocks);
+  if (cleaned > 0) log(`Cleanup: removed ${cleaned} trailing empty block(s)`);
 
   // 12. Verify
   let verifyReport: string | undefined;

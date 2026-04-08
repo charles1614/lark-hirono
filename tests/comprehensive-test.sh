@@ -160,6 +160,12 @@ check "Escaped pipe" 'escaped pipe'
 check "Long title" 'extremely long session'
 
 echo ""
+echo "=== 15. Inline Color Tags ==="
+if echo "$OUTPUT_CONTENT" | grep -qF 'color="green">`Asia/Singapore`'; then echo "  ✅ 15: {green:code} → <text color=\"green\">"; PASS=$((PASS+1)); else echo "  ❌ 15: {green:code} NOT converted"; FAIL=$((FAIL+1)); fi
+if echo "$OUTPUT_CONTENT" | grep -qF 'color="red">LC_ALL'; then echo "  ✅ 15: {red:plain} → <text color=\"red\">"; PASS=$((PASS+1)); else echo "  ❌ 15: {red:plain} NOT converted"; FAIL=$((FAIL+1)); fi
+if echo "$OUTPUT_CONTENT" | grep -qF 'color="red">**CUDA**'; then echo "  ✅ 15: {red:**bold**} still works"; PASS=$((PASS+1)); else echo "  ❌ 15: {red:**bold**} broken"; FAIL=$((FAIL+1)); fi
+
+echo ""
 echo "=== 14. No Residual HTML ==="
 check_not "No <p>" '</p>'
 check_not "No <ul>" '<ul>'

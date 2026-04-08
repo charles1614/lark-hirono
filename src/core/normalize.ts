@@ -196,12 +196,18 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   //     to preserve paragraph breaks in Feishu
   const normalLines = result.split("\n");
   const withBreaks: string[] = [];
+  let inCodeFence = false;
   for (let i = 0; i < normalLines.length; i++) {
     const line = normalLines[i];
     const trimmed = line.trim();
     const nextTrimmed = normalLines[i + 1]?.trim() || "";
 
+    if (trimmed.startsWith("```")) inCodeFence = !inCodeFence;
+
     withBreaks.push(line);
+
+    // Skip blank-line injection inside code fences
+    if (inCodeFence) continue;
 
     // Add blank line after non-empty lines that:
     // - are not headings, list items, code blocks, blockquotes, or separators

@@ -118,6 +118,111 @@ export function computePatches(
   return patches;
 }
 
+// ─── Empty Tail Cleanup ─────────────────────────────────────────────────
+
+/**
+ * Strip Feishu's auto-added trailing newline from code block elements.
+ *
+ * When lark-cli creates a document, the markdown parser appends \n to the
+ * last element of every code block (block_type 14). Feishu renders this as
+ * a visible blank line at the bottom of the code block in the UI.
+ *
+ * The Feishu PATCH API does not support updating code block element content
+ * (returns 1770001 invalid param). Instead, delete the block and recreate it
+ * without the trailing \n — same approach as feishu_tool.py's _make_code().
+ *
+ * Returns number of code blocks fixed.
+ */
+export function cleanupEmptyTails(
+  cli: LarkCli,
+  docId: string,
+  blocks: Record<string, unknown>[]
+): number {
+  // Build block map for parent/children lookup
+  const bmap = new Map<string, Record<string, unknown>>();
+  for (const b of blocks) {
+    bmap.set(b.block_id as string, b);
+  }
+
+  // Collect code blocks that need fixing, with their parent index
+  const toFix: Array<{ block: Record<string, unknown>; parentId: string; index: number }> = [];
+
+  for (const block of blocks) {
+    if (block.block_type !== 14) continue;
+    const elements = ((block as any).code?.elements ?? []) as any[];
+    if (elements.length === 0) continue;
+
+    const last = elements[elements.length - 1];
+    const content: string = last?.text_run?.content ?? "";
+    if (!content.endsWith("\n")) continue;
+
+    const parentId = block.parent_id as string | undefined;
+    if (!parentId) continue;
+    const parent = bmap.get(parentId);
+    if (!parent) continue;
+
+    const parentChildren = (parent.children ?? []) as string[];
+    const index = parentChildren.indexOf(block.block_id as string);
+    if (index === -1) continue;
+
+    toFix.push({ block, parentId, index });
+  }
+
+  if (toFix.length === 0) return 0;
+
+  // Process in reverse index order per parent to avoid index shifting
+  toFix.sort((a, b) => {
+    if (a.parentId !== b.parentId) return a.parentId.localeCompare(b.parentId);
+    return b.index - a.index; // highest index first within same parent
+  });
+
+  let patched = 0;
+
+  for (const { block, parentId, index } of toFix) {
+    const elements = ((block as any).code?.elements ?? []) as any[];
+    const last = elements[elements.length - 1];
+    const content: string = last?.text_run?.content ?? "";
+    const stripped = content.replace(/\n$/, "");
+
+    const fixedElements = elements.map((e: any, i: number) =>
+      i === elements.length - 1
+        ? { ...e, text_run: { ...e.text_run, content: stripped } }
+        : e
+    );
+
+    const style = (block as any).code?.style ?? {};
+    const newBlock: Record<string, unknown> = {
+      block_type: 14,
+      code: { elements: fixedElements, style },
+    };
+
+    // Delete the code block at its current position
+    const deleted = cli.deleteBlockChildrenTail(docId, parentId, index, index + 1);
+    if (!deleted) {
+      console.error(`  cleanupEmptyTails: delete failed at index ${index} in ${parentId}`);
+      continue;
+    }
+
+    // Small delay to let the revision settle
+    const t = Date.now();
+    while (Date.now() - t < 300) { /* busy wait */ }
+
+    // Recreate without trailing \n
+    const created = cli.createBlockChildren(docId, parentId, [newBlock], index);
+    if (created) {
+      patched++;
+    } else {
+      console.error(`  cleanupEmptyTails: recreate failed at index ${index} in ${parentId}`);
+    }
+
+    // Rate limit
+    const t2 = Date.now();
+    while (Date.now() - t2 < 500) { /* busy wait */ }
+  }
+
+  return patched;
+}
+
 // ─── Patch Execution ────────────────────────────────────────────────────
 
 /**

@@ -388,6 +388,8 @@ list items inside table cells, line breaks, mixed bold/italic tags.
 | HL-001 | Single highlight | Session about {red:**CUDA**} programming. |
 | HL-002 | Multiple highlights | Covers {red:**PyTorch**} and {red:**TensorFlow**}. |
 | HL-003 | No highlight | This cell has no highlight tags. |
+| HL-004 | Green inline | Use {green:`Asia/Singapore`} for the timezone. |
+| HL-005 | Red plain | The {red:LC_ALL} override breaks locale. |
 
 ## Extra — GTC Real-World HTML Semantics
 

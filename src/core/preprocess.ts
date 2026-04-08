@@ -158,7 +158,6 @@ export function preprocessMarkdown(
     const headingMatch = trimmed.match(/^(#{1,6}) (.+)/);
     if (headingMatch) {
       const level = headingMatch[1].length;
-      const content = headingMatch[2];
 
       if (level === numberLevel) {
         headingCounter++;

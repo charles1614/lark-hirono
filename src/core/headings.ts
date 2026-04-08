@@ -90,12 +90,6 @@ export function normalizeHeadingNumbers(md: string): string {
   const levelCounters: Record<number, number> = {}; // Track counters per heading level
   const lastParentNumber: Record<number, string> = {}; // Track parent numbers for sub-headings
 
-  // Chinese ordinal to number mapping
-  const cnToNum: Record<string, number> = {
-    "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
-    "甲": 1, "乙": 2, "丙": 3, "丁": 4, "戊": 5, "己": 6, "庚": 7, "辛": 8, "壬": 9, "癸": 10,
-  };
-
   for (const h of headings) {
     const level = h.hashes.length;
 

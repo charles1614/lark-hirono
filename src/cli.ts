@@ -260,6 +260,30 @@ export class LarkCli {
     return allItems;
   }
 
+  /** Delete a range of children from a block (batch_delete). Used for cleanup. */
+  deleteBlockChildrenTail(
+    docId: string,
+    parentBlockId: string,
+    startIndex: number,
+    endIndex: number
+  ): boolean {
+    const path = `/open-apis/docx/v1/documents/${docId}/blocks/${parentBlockId}/children/batch_delete`;
+    const result = this.run(["api", "DELETE", path, "--data", JSON.stringify({ start_index: startIndex, end_index: endIndex })], 30_000);
+    return result !== null && result.code === 0;
+  }
+
+  /** Insert block children at a given index. */
+  createBlockChildren(
+    docId: string,
+    parentBlockId: string,
+    children: Record<string, unknown>[],
+    index: number
+  ): boolean {
+    const path = `/open-apis/docx/v1/documents/${docId}/blocks/${parentBlockId}/children`;
+    const result = this.post(path, { children, index });
+    return result !== null && result.code === 0;
+  }
+
   /** PATCH a block with arbitrary payload. */
   patchBlock(
     docId: string,

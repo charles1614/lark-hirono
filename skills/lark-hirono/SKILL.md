@@ -252,14 +252,17 @@ The optimized document should be **80%+ identical** to the original. Changes sho
 
 #### What to change:
 
-1. **Opening callout** — Add a callout block at the top if missing
+1. **Opening callout** — **REQUIRED for narrative documents** (text-heavy, few tables). Skip for catalog_table or data_table documents.
+   - Write it as the very first block, before any heading.
    - Format: `<callout emoji="ICON" background-color="light-blue" border-color="light-blue">` — choose an icon (e.g. `gift`, `bulb`, `bookmark`, `pushpin`, `rocket`, `star`)
-   - Put the document's intro description inside, closed with `</callout>`
-   - If the source already has an intro blockquote that functions as summary, move its text into the callout
+   - Put the document's intro/summary description inside, closed with `</callout>`
+   - If the source already has an intro paragraph, blockquote, or summary section that describes the document, reuse or lightly optimize that content as the callout body — do not invent new summary text
+   - If no such content exists, synthesize a 1–3 sentence summary from the document's main topic and scope
+   - **Pipeline safety net**: For narrative docs, if you forget the callout, the pipeline will auto-inject one from the first paragraph. However, explicitly writing it gives you control over the content and emoji. Do not rely on this fallback — always write it.
 
 2. **Heading restructuring** — Fix numbering AND hierarchy when needed:
    - Apply **continuous sequential numbering**: `## 1`, `## 2`… for top-level; `### 1.1`, `### 1.2`… for second-level
-   - **Number format**: Always use `## 1 Title` (number then space then title — **no period** after the number)
+   - **Input format**: Write `## 1 Title` (number then space then title — **no period in the markdown you write**). The pipeline adds a period automatically for single-level numbers: `## 1 Title` → rendered as `1. Title` with blue prefix. Multi-level numbers (`### 1.1 Sub`) do NOT get a period added.
    - Fix Chinese ordinals: `## 一、标题` → `## 1 标题`
    - **Fix corruption**: Paragraphs that became headings → convert back to paragraphs
    - **Preserve hierarchy**: Do not add or remove heading levels unless structure is broken
@@ -267,16 +270,23 @@ The optimized document should be **80%+ identical** to the original. Changes sho
 3. **Add emphasis** — Apply `{red:...}` and `{green:...}` markers:
    - **Red emphasis**: Key conclusions, results, important claims (10-20 instances in a long doc)
      - Bold phrase: `{red:**important conclusion**}` → renders bold + red
-     - Plain/code: `{red:term}` or `` {red:`code`} `` → renders red (no bold)
+     - Plain text: `{red:term}` → renders red
+     - Inline code: `` {red:`cmd`} `` → renders red code
    - **Green emphasis**: First mention of key technical terms (5-10 instances)
-     - Plain/code: `{green:term}` or `` {green:`code`} `` → renders green
+     - Plain text: `{green:term}` → renders green
+     - Inline code: `` {green:`code`} `` → renders green code
+   - Raw `<text color="green">Certbot</text>` from fetched documents is also valid and passes through upload unchanged — do not strip it.
+   - **Preserve all existing emphasis**: Every `{red:...}`, `{green:...}`, and `**bold**` in the source document MUST be carried over to the optimized version. Add new emphasis on top; never remove original emphasis.
 
-4. **Add callouts** — Insert visual callouts for key insights:
+4. **Add in-line callouts** — Insert markdown blockquotes for key insights throughout the document body:
    - Use `> 📌 **标题**: ...` for key insights
    - Use `> 📚 **背景**: ...` for background knowledge
-   - Target: 5-15 callouts throughout a long document
+   - Target: 5-15 such blockquotes throughout a long document
+   - These are **markdown blockquotes**, NOT `<callout>` XML blocks — they render as styled quotes in Feishu, distinct from the opening `<callout>` element.
+   - **Pipeline auto-conversion**: Blockquotes matching `TL;DR`, `核心思想`, `关键结论`, `一句话总结`, `核心区别` etc. are automatically converted by the pipeline to `<callout>` XML (blue/green/yellow). Do not manually write `<callout>` XML for these patterns — write them as `> TL;DR: ...` and let the pipeline convert them. This avoids accidental nesting.
+   - **CRITICAL — no nested `<callout>` XML**: Lark does not render a `<callout>` XML block nested inside another `<callout>` XML block. If the source document contains this pattern, convert the inner `<callout>` block to plain paragraphs (strip the opening/closing XML tags, keep the text). Markdown blockquotes (`> ...`) inside a `<callout>` body are fine and are NOT nested callouts.
 
-5. **Fix code blocks** — Add language tags if missing
+5. **Fix code blocks** — Add language tags if missing. Note: for narrative docs, the pipeline auto-tags common languages (python, bash, nginx, yaml, json, go, typescript, etc.) — you only need to add tags for languages the pipeline doesn't recognize.
 6. **Fix factual errors** — Correct typos, broken links, wrong information
 
 #### What NOT to change:

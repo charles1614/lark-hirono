@@ -18,7 +18,7 @@ npm run build --silent 2>/dev/null || { echo "ERROR: build failed"; exit 1; }
 
 check() {
   local desc="$1"; local pattern="$2"
-  if echo "$OUTPUT_CONTENT" | grep -qF "$pattern"; then
+  if grep -qF -- "$pattern" <<<"$OUTPUT_CONTENT"; then
     echo "  ✅ $desc"; PASS=$((PASS + 1))
   else
     echo "  ❌ $desc"; FAIL=$((FAIL + 1))
@@ -27,7 +27,7 @@ check() {
 
 check_regex() {
   local desc="$1"; local pattern="$2"
-  if echo "$OUTPUT_CONTENT" | grep -qE "$pattern"; then
+  if grep -qE -- "$pattern" <<<"$OUTPUT_CONTENT"; then
     echo "  ✅ $desc"; PASS=$((PASS + 1))
   else
     echo "  ❌ $desc"; FAIL=$((FAIL + 1))
@@ -36,7 +36,7 @@ check_regex() {
 
 check_not() {
   local desc="$1"; local pattern="$2"
-  if echo "$OUTPUT_CONTENT" | grep -qF "$pattern"; then
+  if grep -qF -- "$pattern" <<<"$OUTPUT_CONTENT"; then
     echo "  ❌ $desc (should not contain: $pattern)"; FAIL=$((FAIL + 1))
   else
     echo "  ✅ $desc"; PASS=$((PASS + 1))
@@ -45,7 +45,7 @@ check_not() {
 
 check_count() {
   local desc="$1"; local pattern="$2"; local min="$3"
-  local actual; actual=$(echo "$OUTPUT_CONTENT" | grep -cF "$pattern" || true)
+  local actual; actual=$(grep -cF -- "$pattern" <<<"$OUTPUT_CONTENT" || true)
   if [ "$actual" -ge "$min" ]; then
     echo "  ✅ $desc ($actual >= $min)"; PASS=$((PASS + 1))
   else
@@ -122,7 +122,7 @@ check "Bullet items from <li>" 'CUDA 12'
 echo ""
 echo "=== 7. Table — simple markdown ==="
 S7=$(section_content 'color="blue">7 ' 'color="blue">8 ')
-if echo "$S7" | grep -qF 'rows="4"'; then echo "  ✅ Section 7 table rows=4"; PASS=$((PASS+1)); else echo "  ❌ Section 7 rows"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'rows="4"' <<<"$S7"; then echo "  ✅ Section 7 table rows=4"; PASS=$((PASS+1)); else echo "  ❌ Section 7 rows"; FAIL=$((FAIL+1)); fi
 check "Alpha row preserved" 'Alpha'
 
 echo ""
@@ -134,10 +134,10 @@ check "Ordered list in cell" 'first'
 echo ""
 echo "=== 9. Table — HTML sessions ==="
 S9=$(section_content 'color="blue">9 ' 'color="blue">10 ')
-if echo "$S9" | grep -qF 'rows="11"'; then echo "  ✅ Section 9 rows=11"; PASS=$((PASS+1)); else echo "  ❌ Section 9 rows WRONG"; FAIL=$((FAIL+1)); fi
-if echo "$S9" | grep -qF 'cols="3"'; then echo "  ✅ Section 9 cols=3"; PASS=$((PASS+1)); else echo "  ❌ Section 9 cols"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'rows="11"' <<<"$S9"; then echo "  ✅ Section 9 rows=11"; PASS=$((PASS+1)); else echo "  ❌ Section 9 rows WRONG"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'cols="3"' <<<"$S9"; then echo "  ✅ Section 9 cols=3"; PASS=$((PASS+1)); else echo "  ❌ Section 9 cols"; FAIL=$((FAIL+1)); fi
 for code in 001 002 003 004 005 006 007 008 009 010; do
-  if echo "$S9" | grep -qF "HTML-$code"; then echo "  ✅ HTML-$code in table"; PASS=$((PASS+1)); else echo "  ❌ HTML-$code MISSING"; FAIL=$((FAIL+1)); fi
+  if grep -qF -- "HTML-$code" <<<"$S9"; then echo "  ✅ HTML-$code in table"; PASS=$((PASS+1)); else echo "  ❌ HTML-$code MISSING"; FAIL=$((FAIL+1)); fi
 done
 check "<li> → bullet in cell" 'PyTorch'
 check "Links in cell" '[documentation](https://example.com)'
@@ -145,16 +145,16 @@ check "Links in cell" '[documentation](https://example.com)'
 echo ""
 echo "=== 10. Table — Rich Text Sessions ==="
 S10=$(section_content 'color="blue">10 ' 'color="blue">11 ')
-if echo "$S10" | grep -qF 'rows="11"'; then echo "  ✅ Section 10 rows=11"; PASS=$((PASS+1)); else echo "  ❌ Section 10 rows"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'rows="11"' <<<"$S10"; then echo "  ✅ Section 10 rows=11"; PASS=$((PASS+1)); else echo "  ❌ Section 10 rows"; FAIL=$((FAIL+1)); fi
 for code in RT-001 RT-002 RT-003 RT-004 RT-005 RT-006 RT-007 RT-008 RT-009 RT-010; do
-  if echo "$S10" | grep -qF "$code"; then echo "  ✅ $code in table"; PASS=$((PASS+1)); else echo "  ❌ $code MISSING"; FAIL=$((FAIL+1)); fi
+  if grep -qF -- "$code" <<<"$S10"; then echo "  ✅ $code in table"; PASS=$((PASS+1)); else echo "  ❌ $code MISSING"; FAIL=$((FAIL+1)); fi
 done
 
 echo ""
 echo "=== 11. Heading Normalization ==="
 S11=$(section_content 'color="blue">11 ' 'color="blue">14 ')
-if echo "$S11" | grep -qF 'color="blue">12 </text>Chinese Ordinal First'; then echo "  ✅ Chinese → 12"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 12"; FAIL=$((FAIL+1)); fi
-if echo "$S11" | grep -qF 'color="blue">13 </text>Chinese Ordinal Second'; then echo "  ✅ Chinese → 13"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 13"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'color="blue">12 </text>Chinese Ordinal First' <<<"$S11"; then echo "  ✅ Chinese → 12"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 12"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'color="blue">13 </text>Chinese Ordinal Second' <<<"$S11"; then echo "  ✅ Chinese → 13"; PASS=$((PASS+1)); else echo "  ❌ Chinese → 13"; FAIL=$((FAIL+1)); fi
 
 echo ""
 echo "=== 12. Misc Controls ==="
@@ -168,9 +168,9 @@ check "Long title" 'extremely long session'
 
 echo ""
 echo "=== 15. Inline Color Tags ==="
-if echo "$OUTPUT_CONTENT" | grep -qF 'color="green">`Asia/Singapore`'; then echo "  ✅ 15: {green:code} → <text color=\"green\">"; PASS=$((PASS+1)); else echo "  ❌ 15: {green:code} NOT converted"; FAIL=$((FAIL+1)); fi
-if echo "$OUTPUT_CONTENT" | grep -qF 'color="red">LC_ALL'; then echo "  ✅ 15: {red:plain} → <text color=\"red\">"; PASS=$((PASS+1)); else echo "  ❌ 15: {red:plain} NOT converted"; FAIL=$((FAIL+1)); fi
-if echo "$OUTPUT_CONTENT" | grep -qF 'color="red">**CUDA**'; then echo "  ✅ 15: {red:**bold**} still works"; PASS=$((PASS+1)); else echo "  ❌ 15: {red:**bold**} broken"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'color="green">`Asia/Singapore`' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 15: {green:code} → <text color=\"green\">"; PASS=$((PASS+1)); else echo "  ❌ 15: {green:code} NOT converted"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'color="red">LC_ALL' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 15: {red:plain} → <text color=\"red\">"; PASS=$((PASS+1)); else echo "  ❌ 15: {red:plain} NOT converted"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'color="red">**CUDA**' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 15: {red:**bold**} still works"; PASS=$((PASS+1)); else echo "  ❌ 15: {red:**bold**} broken"; FAIL=$((FAIL+1)); fi
 
 echo ""
 echo "=== 14. No Residual HTML ==="
@@ -188,10 +188,10 @@ echo "=== 16. Paragraph in Cells (newline regression) ==="
 S16=$(section_content 'color="blue">16 ' 'color="blue">15 ')
 check_not "16: No <p> in output" '<p>'
 check_not "16: No </p> in output" '</p>'
-if echo "$S16" | grep -qF 'First paragraph'; then echo "  ✅ 16: P-001 first paragraph preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 first paragraph MISSING"; FAIL=$((FAIL+1)); fi
-if echo "$S16" | grep -qF 'Second paragraph'; then echo "  ✅ 16: P-001 second paragraph preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 second paragraph MISSING"; FAIL=$((FAIL+1)); fi
-if echo "$S16" | grep -qF 'Main abstract text'; then echo "  ✅ 16: P-004 abstract text preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-004 abstract text MISSING"; FAIL=$((FAIL+1)); fi
-if echo "$S16" | grep -qF '**Important:**'; then echo "  ✅ 16: P-004 Important bold preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-004 Important bold MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'First paragraph' <<<"$S16"; then echo "  ✅ 16: P-001 first paragraph preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 first paragraph MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'Second paragraph' <<<"$S16"; then echo "  ✅ 16: P-001 second paragraph preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 second paragraph MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'Main abstract text' <<<"$S16"; then echo "  ✅ 16: P-004 abstract text preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-004 abstract text MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- '**Important:**' <<<"$S16"; then echo "  ✅ 16: P-004 Important bold preserved"; PASS=$((PASS+1)); else echo "  ❌ 16: P-004 Important bold MISSING"; FAIL=$((FAIL+1)); fi
 # P-001: two paragraphs should be on separate lines (not space-joined)
 # With empty line separator: grep -A2 catches it
 if echo "$S16" | grep -A2 'First paragraph' | grep -q 'Second paragraph'; then echo "  ✅ 16: P-001 paragraphs on separate lines"; PASS=$((PASS+1)); else echo "  ❌ 16: P-001 paragraphs NOT on separate lines"; FAIL=$((FAIL+1)); fi
@@ -199,15 +199,28 @@ if echo "$S16" | grep -A2 'First paragraph' | grep -q 'Second paragraph'; then e
 echo ""
 echo "=== 17. Escaped Pipe in Cells (regression) ==="
 S17=$(section_content 'color="blue">17 ' 'color="blue">15 ')
-if echo "$S17" | grep -qF 'rows="7"'; then echo "  ✅ 17: Section 17 rows=7"; PASS=$((PASS+1)); else echo "  ❌ 17: Section 17 rows WRONG"; FAIL=$((FAIL+1)); fi
-if echo "$S17" | grep -qF 'cols="3"'; then echo "  ✅ 17: Section 17 cols=3"; PASS=$((PASS+1)); else echo "  ❌ 17: Section 17 cols WRONG"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'rows="7"' <<<"$S17"; then echo "  ✅ 17: Section 17 rows=7"; PASS=$((PASS+1)); else echo "  ❌ 17: Section 17 rows WRONG"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'cols="3"' <<<"$S17"; then echo "  ✅ 17: Section 17 cols=3"; PASS=$((PASS+1)); else echo "  ❌ 17: Section 17 cols WRONG"; FAIL=$((FAIL+1)); fi
 for code in EP-001 EP-002 EP-003 EP-004 EP-005 EP-006; do
-  if echo "$S17" | grep -qF "$code"; then echo "  ✅ 17: $code in table"; PASS=$((PASS+1)); else echo "  ❌ 17: $code MISSING"; FAIL=$((FAIL+1)); fi
+  if grep -qF -- "$code" <<<"$S17"; then echo "  ✅ 17: $code in table"; PASS=$((PASS+1)); else echo "  ❌ 17: $code MISSING"; FAIL=$((FAIL+1)); fi
 done
-if echo "$S17" | grep -qF 'Install Guide | Notice'; then echo "  ✅ 17: EP-001 escaped pipe in link preserved"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-001 escaped pipe broken"; FAIL=$((FAIL+1)); fi
-if echo "$S17" | grep -qF 'pipe in cell'; then echo "  ✅ 17: EP-005 escaped pipe preserved in cell"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-005 escaped pipe broken"; FAIL=$((FAIL+1)); fi
-if echo "$S17" | grep -qF 'grep | sort | uniq'; then echo "  ✅ 17: EP-002 escaped pipes in code preserved"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-002 escaped pipes broken"; FAIL=$((FAIL+1)); fi
-if echo "$S17" | grep -qF 'Install & Demo Guide | Notice & Disclaimers'; then echo "  ✅ 17: EP-006 S82795 regression pipe in link text"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-006 S82795 regression FAILED"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'Install Guide | Notice' <<<"$S17"; then echo "  ✅ 17: EP-001 escaped pipe in link preserved"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-001 escaped pipe broken"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'pipe in cell' <<<"$S17"; then echo "  ✅ 17: EP-005 escaped pipe preserved in cell"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-005 escaped pipe broken"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'grep | sort | uniq' <<<"$S17"; then echo "  ✅ 17: EP-002 escaped pipes in code preserved"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-002 escaped pipes broken"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'Install & Demo Guide | Notice & Disclaimers' <<<"$S17"; then echo "  ✅ 17: EP-006 S82795 regression pipe in link text"; PASS=$((PASS+1)); else echo "  ❌ 17: EP-006 S82795 regression FAILED"; FAIL=$((FAIL+1)); fi
+
+echo ""
+echo "=== 18. Mermaid Block (<add-ons> → \`\`\`mermaid fence) ==="
+# Source: https://my.feishu.cn/wiki/GpY1wUYkbiomW1kbA1RcmwB2nId
+# The pipeline converts <add-ons component-type-id="blk_631fefbbae02400430b8f9f4"> to
+# a ```mermaid fence so lark-cli v1.0.6+ can upload it as a whiteboard block.
+# JSON.parse inside the converter unescapes \u003e → > and \n → newline.
+if grep -qF -- '```mermaid' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 18: mermaid code fence present"; PASS=$((PASS+1)); else echo "  ❌ 18: mermaid code fence MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'Stage_1_Image_Encoder' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 18: Stage 1 subgraph name preserved"; PASS=$((PASS+1)); else echo "  ❌ 18: Stage 1 subgraph name MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'Stage_2_Sparse_Perception' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 18: Stage 2 subgraph name preserved"; PASS=$((PASS+1)); else echo "  ❌ 18: Stage 2 subgraph name MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'Stage_3_Motion_Planner' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 18: Stage 3 subgraph name preserved"; PASS=$((PASS+1)); else echo "  ❌ 18: Stage 3 subgraph name MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- '-->' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 18: Arrow --> unescaped (\\u003e decoded)"; PASS=$((PASS+1)); else echo "  ❌ 18: Arrow --> MISSING"; FAIL=$((FAIL+1)); fi
+if grep -qF -- 'component-type-id="blk_631fefbbae02400430b8f9f4"' <<<"$OUTPUT_CONTENT"; then echo "  ❌ 18: <add-ons> tag not converted (still present)"; FAIL=$((FAIL+1)); else echo "  ✅ 18: <add-ons> tag replaced (not in output)"; PASS=$((PASS+1)); fi
 
 echo ""
 echo "========================================="

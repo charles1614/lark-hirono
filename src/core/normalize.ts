@@ -12,6 +12,49 @@ export interface NormalizationReport {
   tableSeparatorFixed: number;
   duplicateLooseMetaRemoved: boolean;
   htmlPresent: boolean;
+  addOnsMermaidConverted: number;
+}
+
+// ─── Add-ons → Mermaid ──────────────────────────────────────────────────────
+
+const MERMAID_COMPONENT_TYPE = "blk_631fefbbae02400430b8f9f4";
+
+/**
+ * Convert Feishu <add-ons> mermaid blocks to ```mermaid fences.
+ *
+ * Fetch returns mermaid diagrams as a single-line tag:
+ *   <add-ons component-type-id="blk_631fefbbae02400430b8f9f4" record="{"data":"graph TD\n...","theme":"base","view":"chart"}"/>
+ *
+ * lark-cli docs +create (v1.0.6+) accepts ```mermaid fences and creates whiteboard blocks.
+ * This conversion enables round-trip upload of mermaid diagrams.
+ *
+ * JSON.parse handles \n → newline and \u003e → > inside the data field automatically.
+ */
+export function convertAddOnsToMermaid(md: string): { text: string; converted: number } {
+  let converted = 0;
+  const lines = md.split("\n");
+  const out = lines.map((line) => {
+    if (!line.includes("<add-ons") || !line.includes(MERMAID_COMPONENT_TYPE)) return line;
+    if (!line.trimEnd().endsWith('"/>')) return line;
+
+    const recordMarker = 'record="';
+    const rPos = line.indexOf(recordMarker);
+    if (rPos === -1) return line;
+
+    const jsonStart = rPos + recordMarker.length;
+    // The line ends with }"/> — strip the closing "/> (2 chars) + closing " of attribute (1 char)
+    const jsonStr = line.slice(jsonStart, line.length - 3);
+
+    try {
+      const record = JSON.parse(jsonStr) as { data?: string };
+      if (typeof record.data !== "string") return line;
+      converted++;
+      return "```mermaid\n" + record.data + "\n```";
+    } catch {
+      return line;
+    }
+  });
+  return { text: out.join("\n"), converted };
 }
 
 // ─── Normalize ──────────────────────────────────────────────────────────
@@ -136,7 +179,13 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
     tableSeparatorFixed: 0,
     duplicateLooseMetaRemoved: false,
     htmlPresent: false,
+    addOnsMermaidConverted: 0,
   };
+
+  // 0. Convert <add-ons> mermaid blocks → ```mermaid fences (must run before HTML stripping)
+  const addOns = convertAddOnsToMermaid(mdText);
+  mdText = addOns.text;
+  report.addOnsMermaidConverted = addOns.converted;
 
   // 1. Normalize table separators
   const lines = mdText.split("\n");

@@ -16,13 +16,11 @@ Text-heavy documents with headings, paragraphs, and minimal tables.
 
 **Example:**
 ```markdown
-Input:
-## **一、端口规划**
-- 80/tcp → Nginx
+Input (LLM writes):
+## 1 端口规划
 
-Output:
-## 1 端口规划 (with blue number, no period after number)
-- 80/tcp → Nginx
+Pipeline output (period added automatically for single-level):
+## <text color="blue">1. </text>端口规划
 ```
 
 ### Catalog Table Documents
@@ -53,14 +51,23 @@ Output (after LLM keyword selection):
 
 - ✅ Sequential numbering: 1, 2, 3...
 - ✅ No Chinese ordinals remaining
-- ✅ Blue color applied: `<text color="blue">1 </text>`
-- ✅ Background colors by depth: red → orange → yellow → green → blue
+- ✅ Number prefix color: always `blue` regardless of heading depth — `<text color="blue">1. </text>`
+- ✅ Single-level numbers get a period added by the pipeline: input `## 1 Title` → output `<text color="blue">1. </text>Title`
+- ✅ Multi-level numbers do NOT get a period: input `### 1.1 Sub` → output `<text color="blue">1.1 </text>Sub`
+- ✅ Background colors by heading depth (from `preprocess.ts` defaults):
+  - H2 (`##`) → `light-orange`
+  - H3 (`###`) → `light-yellow`
+  - H4 (`####`) → `light-green`
+  - H5 (`#####`) → `light-blue`
+  - H6 (`######`) → `light-yellow` (cycles back)
 
 ### Callout
 
-- ✅ First paragraph extracted to callout
+- ✅ Opening callout present (narrative docs only — not injected for catalog_table or data_table)
+- ✅ First paragraph extracted to callout body (pipeline auto-injects from first paragraph if LLM didn't add one)
 - ✅ No duplicate paragraph in body
 - ✅ Callout format: `<callout emoji="bulb" background-color="light-blue" border-color="light-blue">`
+- ✅ No nested callouts — `<callout>` XML cannot contain another `<callout>` block
 
 ### Tables
 
@@ -75,6 +82,23 @@ Output (after LLM keyword selection):
 - ✅ Preserves existing formatting
 
 ## Common Issues
+
+### Nested Callout Blocks
+
+**Problem:** The source document contains a `<callout>` XML block whose body contains another `<callout>` opening tag — i.e., the inner block was not properly closed before the outer one started, or the source document accidentally stacked two callout regions.
+
+Note: `> 📌 **Key**: ...` markdown blockquotes inside a `<callout>` are NOT the same as nested callouts — blockquotes render fine inside a callout body. Only literal `<callout>` XML tags nested inside another `<callout>` XML block are a problem.
+
+**Solution:** Lark does not render nested `<callout>` XML blocks. Convert the inner `<callout>` block to plain paragraphs: remove the `<callout>`, `</callout>`, and its attribute tags; keep the text content as regular paragraphs. Only one `<callout>` nesting level is allowed at any point in the document.
+
+### `<text color>` Tag With Inline Code
+
+**Supported forms (all valid for upload):**
+- Shorthand: `{green:Certbot}` → `<text color="green">Certbot</text>` ✅
+- Shorthand with code: `` {green:`Certbot`} `` → `<text color="green">`Certbot`</text>` ✅
+- Raw HTML from fetch: `<text color="green">Certbot</text>` passes through unchanged ✅
+
+**No special handling needed** — do not strip color tags or downgrade them to plain text. All three forms survive the upload pipeline.
 
 ### Chinese Ordinals Not Converted
 

@@ -14,7 +14,12 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 FIXTURE="$SCRIPT_DIR/fixtures/comprehensive.md"
 WIKI_SPACE="7620053427331681234"
 WIKI_NODE="UNtHwabqNiqc8ZkzvLscWNnwnYd"
-LARKCLI="/tmp/openclaw/larkcli/node_modules/.bin/lark-cli"
+LARKCLI="${LARKCLI:-$(command -v lark-cli || true)}"
+
+if [ -z "$LARKCLI" ]; then
+  echo "❌ Could not find lark-cli in PATH"
+  exit 1
+fi
 
 PASS=0
 FAIL=0

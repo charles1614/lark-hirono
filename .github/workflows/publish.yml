@@ -1,22 +1,19 @@
-name: Release
+name: Publish Package
 
 on:
   push:
-    branches:
-      - master
-      - main
+    tags:
+      - "v*"
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -34,6 +31,8 @@ jobs:
 
       - run: pnpm run build
 
+      - run: pnpm test --if-present
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -41,6 +40,4 @@ jobs:
 
       - run: npm install -g npm@latest
 
-      - run: pnpm exec semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: npm publish --access public

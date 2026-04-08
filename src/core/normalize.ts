@@ -13,11 +13,164 @@ export interface NormalizationReport {
   duplicateLooseMetaRemoved: boolean;
   htmlPresent: boolean;
   addOnsMermaidConverted: number;
+  mermaidThemeApplied: number;
 }
 
 // ─── Add-ons → Mermaid ──────────────────────────────────────────────────────
 
 const MERMAID_COMPONENT_TYPE = "blk_631fefbbae02400430b8f9f4";
+const MERMAID_STAGE_FILL = "#f7f9ff";
+const MERMAID_STAGE_STROKE = "#d6def2";
+const MERMAID_ENDPOINT_FILL = "#fdf5e0";
+const MERMAID_ENDPOINT_STROKE = "#f4ead0";
+const MERMAID_ENDPOINT_KEYWORDS = /\b(input|output|start|end|source|sink|entry|exit|ingress|egress)\b/i;
+
+interface MermaidNodeRef {
+  id: string;
+  label: string;
+}
+
+function stripWrappingQuotes(label: string): string {
+  if (
+    (label.startsWith("\"") && label.endsWith("\"")) ||
+    (label.startsWith("'") && label.endsWith("'"))
+  ) {
+    return label.slice(1, -1);
+  }
+  return label;
+}
+
+function stripBoldMarkdown(label: string): string {
+  const trimmed = label.trim();
+  if (trimmed.startsWith("**") && trimmed.endsWith("**") && trimmed.length >= 4) {
+    return trimmed.slice(2, -2).trim();
+  }
+  return trimmed;
+}
+
+function boldTopLevelSubgraphLabel(line: string): string {
+  const match = line.match(/^(\s*subgraph\s+)([A-Za-z][A-Za-z0-9_:.:-]*)(?:\s+(.*?))?\s*$/);
+  if (!match) return line;
+
+  const [, prefix, id, rawLabel] = match;
+  if (!rawLabel) return line;
+
+  let label = rawLabel.trim();
+  if (label.startsWith("[") && label.endsWith("]")) {
+    label = label.slice(1, -1).trim();
+  }
+  label = stripWrappingQuotes(stripBoldMarkdown(label));
+  if (!label) return line;
+
+  return `${prefix}${id} ["**${label}**"]`;
+}
+
+function extractNodeRef(segment: string, fromStart: boolean): MermaidNodeRef | null {
+  const cleaned = fromStart ? segment.trimStart().replace(/^\|[^|]*\|\s*/, "") : segment.trimEnd();
+  const pattern = fromStart
+    ? /^([A-Za-z][A-Za-z0-9_]*)(?:\(([^)]*)\)|\[([^\]]*)\]|\{([^}]*)\})?(?:::[A-Za-z][A-Za-z0-9_-]*)?/
+    : /([A-Za-z][A-Za-z0-9_]*)(?:\(([^)]*)\)|\[([^\]]*)\]|\{([^}]*)\})?(?:::[A-Za-z][A-Za-z0-9_-]*)?\s*$/;
+  const match = cleaned.match(pattern);
+  if (!match) return null;
+
+  const id = match[1];
+  const label = (match[2] ?? match[3] ?? match[4] ?? id).trim();
+  return { id, label };
+}
+
+function findArrowIndex(line: string): { index: number; token: string } | null {
+  const tokens = ["-.->", "-->", "==>"];
+  let best: { index: number; token: string } | null = null;
+  for (const token of tokens) {
+    const index = line.indexOf(token);
+    if (index !== -1 && (!best || index < best.index)) best = { index, token };
+  }
+  return best;
+}
+
+export function applyMermaidTheme(source: string): { text: string; themed: boolean } {
+  const lines = source.split("\n");
+  const topLevelSubgraphs: string[] = [];
+  const indegree = new Map<string, number>();
+  const outdegree = new Map<string, number>();
+  const labels = new Map<string, string>();
+
+  let depth = 0;
+  const themedLines = lines.map((line) => {
+    const trimmed = line.trim();
+
+    if (/^subgraph\s+/.test(trimmed)) {
+      const isTopLevel = depth === 0;
+      depth++;
+      if (isTopLevel) {
+        const subgraphMatch = trimmed.match(/^subgraph\s+([A-Za-z][A-Za-z0-9_:.:-]*)/);
+        if (subgraphMatch) topLevelSubgraphs.push(subgraphMatch[1]);
+        return boldTopLevelSubgraphLabel(line);
+      }
+      return line;
+    }
+
+    if (trimmed === "end" && depth > 0) {
+      depth--;
+      return line;
+    }
+
+    if (!trimmed || trimmed.startsWith("%%") || trimmed.startsWith("style ")) return line;
+
+    const arrow = findArrowIndex(line);
+    if (!arrow) return line;
+
+    const left = extractNodeRef(line.slice(0, arrow.index), false);
+    const right = extractNodeRef(line.slice(arrow.index + arrow.token.length), true);
+    if (!left || !right) return line;
+
+    labels.set(left.id, left.label);
+    labels.set(right.id, right.label);
+    outdegree.set(left.id, (outdegree.get(left.id) ?? 0) + 1);
+    indegree.set(right.id, (indegree.get(right.id) ?? 0) + 1);
+    indegree.set(left.id, indegree.get(left.id) ?? 0);
+    outdegree.set(right.id, outdegree.get(right.id) ?? 0);
+    return line;
+  });
+
+  const sourceSinkIds = Array.from(new Set([...indegree.keys(), ...outdegree.keys()])).filter((id) => {
+    return (indegree.get(id) ?? 0) === 0 || (outdegree.get(id) ?? 0) === 0;
+  });
+  const keywordEndpoints = sourceSinkIds.filter((id) => MERMAID_ENDPOINT_KEYWORDS.test(labels.get(id) ?? ""));
+  const endpointIds = keywordEndpoints.length > 0 ? keywordEndpoints : sourceSinkIds.length <= 2 ? sourceSinkIds : [];
+
+  const targetStyleIds = new Set([...topLevelSubgraphs, ...endpointIds]);
+  const filteredLines = themedLines.filter((line) => {
+    const match = line.trim().match(/^style\s+([A-Za-z][A-Za-z0-9_:.:-]*)\s+/);
+    return !match || !targetStyleIds.has(match[1]);
+  });
+
+  const styleLines = [
+    ...topLevelSubgraphs.map((id) =>
+      `style ${id} fill:${MERMAID_STAGE_FILL},stroke:${MERMAID_STAGE_STROKE},stroke-width:2px,font-weight:bold`,
+    ),
+    ...endpointIds.map((id) =>
+      `style ${id} fill:${MERMAID_ENDPOINT_FILL},stroke:${MERMAID_ENDPOINT_STROKE},stroke-width:2px`,
+    ),
+  ];
+
+  if (styleLines.length === 0 && filteredLines.join("\n") === source) {
+    return { text: source, themed: false };
+  }
+
+  const next = [...filteredLines, "", ...styleLines].join("\n").replace(/\n{3,}/g, "\n\n");
+  return { text: next, themed: styleLines.length > 0 || next !== source };
+}
+
+export function themeMermaidFences(md: string): { text: string; themed: number } {
+  let themed = 0;
+  const text = md.replace(/```mermaid\n([\s\S]*?)\n```/g, (_, body: string) => {
+    const result = applyMermaidTheme(body);
+    if (result.themed) themed++;
+    return `\`\`\`mermaid\n${result.text}\n\`\`\``;
+  });
+  return { text, themed };
+}
 
 /**
  * Convert Feishu <add-ons> mermaid blocks to ```mermaid fences.
@@ -180,12 +333,18 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
     duplicateLooseMetaRemoved: false,
     htmlPresent: false,
     addOnsMermaidConverted: 0,
+    mermaidThemeApplied: 0,
   };
 
   // 0. Convert <add-ons> mermaid blocks → ```mermaid fences (must run before HTML stripping)
   const addOns = convertAddOnsToMermaid(mdText);
   mdText = addOns.text;
   report.addOnsMermaidConverted = addOns.converted;
+
+  // 0.5 Apply Mermaid theming to any explicit mermaid fences in the document.
+  const mermaidTheme = themeMermaidFences(mdText);
+  mdText = mermaidTheme.text;
+  report.mermaidThemeApplied = mermaidTheme.themed;
 
   // 1. Normalize table separators
   const lines = mdText.split("\n");

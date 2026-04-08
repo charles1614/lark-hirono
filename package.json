@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Feishu (Lark) doc creation pipeline — markdown to styled Feishu documents with heading numbering, table conversion, and upload workflow",
   "packageManager": "pnpm@10.18.3",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/charles1614/lark-hirono.git"
+  },
+  "homepage": "https://github.com/charles1614/lark-hirono#readme",
+  "bugs": {
+    "url": "https://github.com/charles1614/lark-hirono/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

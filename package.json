@@ -1,5 +1,5 @@
 {
-  "name": "feishu-custom",
+  "name": "lark-hirono",
   "version": "0.1.0",
   "description": "Feishu (Lark) doc creation pipeline — markdown to styled Feishu documents with heading numbering, table conversion, and upload workflow",
   "type": "module",

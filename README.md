@@ -16,6 +16,23 @@ Markdown → Styled Feishu (Lark) documents with heading numbering, table conver
 
 ## Install
 
+### CLI (npm)
+
+```bash
+npm install -g lark-hirono
+lark-cli auth login --domain docs
+```
+
+### Claude Code Skill
+
+```bash
+npx skills add charles1614/lark-hirono
+```
+
+Then use `/lark-hirono` in Claude Code. See [`skills/lark-hirono/SKILL.md`](skills/lark-hirono/SKILL.md) for action reference.
+
+### Local Development
+
 ```bash
 pnpm install
 lark-cli auth login --domain docs

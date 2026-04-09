@@ -9,6 +9,7 @@ import { normalizeMarkdown, lintMarkdown, boldTableHeaders, unescapePipes } from
 import { highlightExtract, saveBatches, highlightApply, type KeywordEntry } from "./core/highlight.js";
 import { preprocessMarkdown } from "./core/preprocess.js";
 import { computePatches, executePatches, cleanupEmptyTails } from "./patch/patch.js";
+import { extractMermaidBlocks, patchMermaidWhiteboards } from "./whiteboard/mermaid-patch.js";
 import { processImages, extractImageRefs } from "./image/images.js";
 import { splitMarkdown } from "./core/chunked.js";
 import { convertToLarkTables } from "./core/lark-table.js";
@@ -239,7 +240,10 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   // Convert {color:content} → <text color="color">content</text>
   // Handles {red:**bold**}, {green:`code`}, {red:plain}, etc.
   // This runs regardless of --no-highlight so fixture tags always render.
-  md = md.replace(/\{(\w+):([^}]+)\}/g, '<text color="$1">$2</text>');
+  // Skip code fences to avoid corrupting mermaid %%{init:...}%% directives.
+  md = md.split(/(```[\s\S]*?```)/g).map((block) =>
+    block.startsWith("```") ? block : block.replace(/\{(\w+):([^}]+)\}/g, '<text color="$1">$2</text>')
+  ).join("");
   const redCount = (md.match(/<text color="red">/g) || []).length;
   if (redCount > 0) log(`Red highlights: ${redCount}`);
 
@@ -262,14 +266,18 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
 
   let docId: string;
   let docUrl: string;
+  let boardTokens: string[] = [];
+  const mermaidBlocks = extractMermaidBlocks(md);
+  if (mermaidBlocks.length > 0) log(`Mermaid blocks: ${mermaidBlocks.length}`);
 
   // --new always creates a new doc, never overwrites
   if (mode === "update" && args.docId && !args.createNew) {
     log(`Updating document ${args.docId}...`);
     const updated = cli.updateDoc(args.docId, md);
-    if (!updated) { logError("ERROR: Document update failed"); process.exit(1); }
+    if (!updated.ok) { logError("ERROR: Document update failed"); process.exit(1); }
     docId = args.docId;
     docUrl = `https://www.feishu.cn/wiki/${docId}`;
+    boardTokens = updated.boardTokens;
     log("Update complete");
   } else {
     log("Creating document...");
@@ -278,6 +286,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
       if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
       docId = created.doc_id;
       docUrl = created.url;
+      boardTokens = created.boardTokens;
     } else {
       log("Large doc, using chunked upload...");
       const chunks = splitMarkdown(md, { maxLines: 200, maxBytes: MAX_BYTES });
@@ -334,6 +343,12 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   // 11b. Clean up Feishu auto-created trailing empty blocks inside containers
   const cleaned = cleanupEmptyTails(cli, docId, blocks);
   if (cleaned > 0) log(`Cleanup: removed ${cleaned} trailing empty block(s)`);
+
+  // 11c. Patch mermaid whiteboard connector caption background colors
+  if (mermaidBlocks.length > 0 && boardTokens.length > 0) {
+    const patched = patchMermaidWhiteboards(boardTokens, mermaidBlocks, cli);
+    log(`Whiteboard patch: ${patched}/${boardTokens.length} boards`);
+  }
 
   // 12. Verify
   let verifyReport: string | undefined;

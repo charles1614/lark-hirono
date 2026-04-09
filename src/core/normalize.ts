@@ -21,8 +21,9 @@ export interface NormalizationReport {
 const MERMAID_COMPONENT_TYPE = "blk_631fefbbae02400430b8f9f4";
 const MERMAID_STAGE_FILL = "#f7f9ff";
 const MERMAID_STAGE_STROKE = "#d6def2";
-const MERMAID_ENDPOINT_FILL = "#fdf5e0";
+const MERMAID_ENDPOINT_FILL = "#fff4df";
 const MERMAID_ENDPOINT_STROKE = "#f4ead0";
+export const MERMAID_EDGE_LABEL_BG = "#f4deff";
 const MERMAID_ENDPOINT_KEYWORDS = /\b(input|output|start|end|source|sink|entry|exit|ingress|egress)\b/i;
 
 interface MermaidNodeRef {
@@ -90,13 +91,18 @@ function findArrowIndex(line: string): { index: number; token: string } | null {
 
 export function applyMermaidTheme(source: string): { text: string; themed: boolean } {
   const lines = source.split("\n");
+  const initDirective = `%%{init: {"theme":"base"} }%%`;
+  const bodyStart =
+    lines[0]?.trim().startsWith("%%{init:") ? 1 : 0;
+  const graphHeader = lines[bodyStart] ?? "";
+  const graphBody = lines.slice(bodyStart + 1);
   const topLevelSubgraphs: string[] = [];
   const indegree = new Map<string, number>();
   const outdegree = new Map<string, number>();
   const labels = new Map<string, string>();
 
   let depth = 0;
-  const themedLines = lines.map((line) => {
+  const themedBody = graphBody.map((line) => {
     const trimmed = line.trim();
 
     if (/^subgraph\s+/.test(trimmed)) {
@@ -140,7 +146,7 @@ export function applyMermaidTheme(source: string): { text: string; themed: boole
   const endpointIds = keywordEndpoints.length > 0 ? keywordEndpoints : sourceSinkIds.length <= 2 ? sourceSinkIds : [];
 
   const targetStyleIds = new Set([...topLevelSubgraphs, ...endpointIds]);
-  const filteredLines = themedLines.filter((line) => {
+  const filteredBody = themedBody.filter((line) => {
     const match = line.trim().match(/^style\s+([A-Za-z][A-Za-z0-9_:.:-]*)\s+/);
     return !match || !targetStyleIds.has(match[1]);
   });
@@ -154,12 +160,15 @@ export function applyMermaidTheme(source: string): { text: string; themed: boole
     ),
   ];
 
-  if (styleLines.length === 0 && filteredLines.join("\n") === source) {
+  const nextLines = [initDirective, graphHeader, ...filteredBody, "", ...styleLines]
+    .filter((line, index, arr) => !(line === "" && arr[index - 1] === ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
+
+  if (styleLines.length === 0 && nextLines === [initDirective, ...lines].join("\n")) {
     return { text: source, themed: false };
   }
-
-  const next = [...filteredLines, "", ...styleLines].join("\n").replace(/\n{3,}/g, "\n\n");
-  return { text: next, themed: styleLines.length > 0 || next !== source };
+  return { text: nextLines, themed: styleLines.length > 0 || nextLines !== source };
 }
 
 export function themeMermaidFences(md: string): { text: string; themed: number } {

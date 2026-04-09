@@ -202,7 +202,7 @@ export class LarkCli {
     markdown: string,
     wikiSpace = "7620053427331681234",
     wikiNode?: string
-  ): { doc_id: string; url: string } | null {
+  ): { doc_id: string; url: string; boardTokens: string[] } | null {
     try {
       const args = ["docs", "+create", "--title", title, "--markdown", markdown];
       if (wikiNode) {
@@ -220,7 +220,8 @@ export class LarkCli {
       if (parsed?.ok && parsed.data) {
         const docId = parsed.data.doc_id as string;
         const docUrl = (parsed.data.doc_url as string) ?? `https://www.feishu.cn/wiki/${docId}`;
-        if (docId) return { doc_id: docId, url: docUrl };
+        const boardTokens = (parsed.data.board_tokens as string[]) ?? [];
+        if (docId) return { doc_id: docId, url: docUrl, boardTokens };
       }
       return null;
     } catch {
@@ -297,20 +298,45 @@ export class LarkCli {
 
   
   /** Replace doc content with new markdown. */
-  updateDoc(docId: string, markdown: string): boolean {
+  updateDoc(docId: string, markdown: string): { ok: boolean; boardTokens: string[] } {
     try {
       const args = [
-        'docs', '+update',
-        '--doc', docId,
-        '--mode', 'overwrite',
-        '--markdown', markdown,
+        "docs", "+update",
+        "--doc", docId,
+        "--mode", "overwrite",
+        "--markdown", markdown,
       ];
-      execFileSync(this.cli, args, {
-        encoding: 'utf-8',
+      const out = execFileSync(this.cli, args, {
+        encoding: "utf-8",
         timeout: 300_000,
         maxBuffer: 50 * 1024 * 1024,
       });
-      return true;
+      const parsed = JSON.parse(out);
+      const boardTokens = (parsed?.data?.board_tokens as string[]) ?? [];
+      return { ok: parsed?.ok === true || parsed?.success === true, boardTokens };
+    } catch {
+      return { ok: false, boardTokens: [] };
+    }
+  }
+
+  /** Overwrite a whiteboard's DSL content. dslJson is the full whiteboard-cli OpenAPI output. */
+  updateWhiteboard(boardToken: string, dslJson: string): boolean {
+    try {
+      const args = [
+        "docs", "+whiteboard-update",
+        "--whiteboard-token", boardToken,
+        "--overwrite",
+        "--yes",
+      ];
+      const out = execFileSync(this.cli, args, {
+        encoding: "utf-8",
+        timeout: 60_000,
+        maxBuffer: 10 * 1024 * 1024,
+        input: dslJson,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const parsed = JSON.parse(out);
+      return parsed?.ok === true;
     } catch {
       return false;
     }

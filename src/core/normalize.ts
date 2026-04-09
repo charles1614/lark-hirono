@@ -470,17 +470,20 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   const normalLines = result.split("\n");
   const withBreaks: string[] = [];
   let inCodeFence = false;
+  let inDisplayMath = false;
   for (let i = 0; i < normalLines.length; i++) {
     const line = normalLines[i];
     const trimmed = line.trim();
     const nextTrimmed = normalLines[i + 1]?.trim() || "";
 
     if (trimmed.startsWith("```")) inCodeFence = !inCodeFence;
+    // Track $$...$$ display math blocks (standalone $$ on a line)
+    if (trimmed === "$$" && !inCodeFence) inDisplayMath = !inDisplayMath;
 
     withBreaks.push(line);
 
-    // Skip blank-line injection inside code fences
-    if (inCodeFence) continue;
+    // Skip blank-line injection inside code fences and display math
+    if (inCodeFence || inDisplayMath) continue;
 
     // Add blank line after non-empty lines that:
     // - are not headings, list items, code blocks, blockquotes, or separators

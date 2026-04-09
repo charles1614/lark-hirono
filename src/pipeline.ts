@@ -3,10 +3,11 @@
  */
 
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { LarkCli } from "./cli.js";
 import { analyzeMarkdown } from "./core/analyze.js";
 import { normalizeMarkdown, lintMarkdown, boldTableHeaders, unescapePipes } from "./core/normalize.js";
-import { highlightExtract, saveBatches, highlightApply, type KeywordEntry } from "./core/highlight.js";
+import { highlightExtract, saveBatches, highlightApply, autoHighlightMetrics, type KeywordEntry } from "./core/highlight.js";
 import { preprocessMarkdown } from "./core/preprocess.js";
 import { computePatches, executePatches, cleanupEmptyTails } from "./patch/patch.js";
 import { extractMermaidBlocks, patchMermaidWhiteboards } from "./whiteboard/mermaid-patch.js";
@@ -16,6 +17,7 @@ import { convertToLarkTables } from "./core/lark-table.js";
 import { verifyDoc, formatReport } from "./verify/verify.js";
 import { log, logError, initLogging } from "./logging.js";
 import { optimizeNarrative, stripChatbotTail } from "./core/narrative.js";
+import { convertLatexToEquationTags } from "./core/latex.js";
 
 // ─── Arg Parsing ────────────────────────────────────────────────────────
 
@@ -190,7 +192,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
 
   // 2.5. Narrative document optimization (non-table docs)
   let narrativeMd = normalized;
-  if (analysis.documentType === "narrative") {
+  if (analysis.documentType === "narrative" || analysis.documentType === "mixed") {
     const result = optimizeNarrative(normalized, { calloutIcon: "bulb" });
     narrativeMd = result.text;
     if (result.stats.calloutInjected) log(`Narrative: opening callout injected`);
@@ -198,6 +200,13 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     if (result.stats.blockquotesConverted > 0) log(`Narrative: ${result.stats.blockquotesConverted} blockquotes → callouts`);
     if (result.stats.signpostsBolded > 0) log(`Narrative: ${result.stats.signpostsBolded} signpost phrases bolded`);
     if (result.stats.separatorsAdded > 0) log(`Narrative: ${result.stats.separatorsAdded} section separators added`);
+  }
+
+  // 3. LaTeX → <equation> tags (before preprocess to avoid mangling)
+  const latex = convertLatexToEquationTags(narrativeMd);
+  narrativeMd = latex.text;
+  if (latex.inline + latex.display > 0) {
+    log(`LaTeX: ${latex.inline} inline, ${latex.display} display → <equation> tags`);
   }
 
   // 4. Lint
@@ -235,6 +244,10 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
         log(`Highlight: waiting for ${highlightKeywordFile}`);
       }
     }
+  } else if (args.highlight && (analysis.documentType === "narrative" || analysis.documentType === "mixed")) {
+    const metrics = autoHighlightMetrics(md);
+    md = metrics.text;
+    if (metrics.count > 0) log(`Auto-highlight: ${metrics.count} metrics highlighted`);
   }
 
   // Convert {color:content} → <text color="color">content</text>
@@ -270,10 +283,17 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   const mermaidBlocks = extractMermaidBlocks(md);
   if (mermaidBlocks.length > 0) log(`Mermaid blocks: ${mermaidBlocks.length}`);
 
+  // Determine image directory for local images
+  const imageRefs = extractImageRefs(md);
+  const hasLocalImages = imageRefs.some(r => !r.url.startsWith("http"));
+  const effectiveImageDir = args.imageDir
+    ?? (hasLocalImages && args.input ? dirname(resolve(args.input)) : null);
+  if (effectiveImageDir) log(`Image dir: ${effectiveImageDir}`);
+
   // --new always creates a new doc, never overwrites
   if (mode === "update" && args.docId && !args.createNew) {
     log(`Updating document ${args.docId}...`);
-    const updated = cli.updateDoc(args.docId, md);
+    const updated = cli.updateDoc(args.docId, md, effectiveImageDir ?? undefined);
     if (!updated.ok) { logError("ERROR: Document update failed"); process.exit(1); }
     docId = args.docId;
     docUrl = `https://www.feishu.cn/wiki/${docId}`;
@@ -282,7 +302,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   } else {
     log("Creating document...");
     if (mdBytes <= MAX_BYTES) {
-      const created = cli.createDoc(title, md, args.wikiSpace, args.wikiNode);
+      const created = cli.createDoc(title, md, args.wikiSpace, args.wikiNode, effectiveImageDir ?? undefined);
       if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
       docId = created.doc_id;
       docUrl = created.url;
@@ -292,7 +312,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
       const chunks = splitMarkdown(md, { maxLines: 200, maxBytes: MAX_BYTES });
       log(`Split into ${chunks.length} chunks`);
 
-      const created = cli.createDoc(title, chunks[0].markdown, args.wikiSpace, args.wikiNode);
+      const created = cli.createDoc(title, chunks[0].markdown, args.wikiSpace, args.wikiNode, effectiveImageDir ?? undefined);
       if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
       docId = created.doc_id;
       docUrl = created.url;
@@ -309,7 +329,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
         if (currentHeading) { lastHeading = currentHeading; }
         else if (lastHeading) { chunkMd = lastHeading + "\n\n" + chunkMd; }
 
-        if (!cli.appendDoc(docId, chunkMd)) {
+        if (!cli.appendDoc(docId, chunkMd, effectiveImageDir ?? undefined)) {
           log(`WARNING: Chunk ${i}/${chunks.length - 1} append returned failure (may still have been uploaded)`);
         }
         await sleep(2000);
@@ -320,14 +340,17 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
 
   log(`Doc ready: ${docId}`);
 
-  // 10. Images
-  const imageRefs = extractImageRefs(md);
+  // 10. Images — local images handled by --image-dir on lark-cli;
+  //     only process remaining remote images via the API fallback.
   if (imageRefs.length > 0) {
-    log(`Images: ${imageRefs.length} references found`);
-    try {
-      const imgResult = processImages(cli, md, docId);
-      log(`Images: ${imgResult.uploaded}/${imageRefs.length} uploaded`);
-    } catch (err) { log(`Image error: ${(err as Error).message}`); }
+    log(`Images: ${imageRefs.length} references found${effectiveImageDir ? " (local handled by --image-dir)" : ""}`);
+    const remoteRefs = imageRefs.filter(r => r.url.startsWith("http"));
+    if (remoteRefs.length > 0) {
+      try {
+        const imgResult = processImages(cli, md, docId);
+        log(`Images: ${imgResult.uploaded}/${remoteRefs.length} remote uploaded`);
+      } catch (err) { log(`Image error: ${(err as Error).message}`); }
+    }
   }
 
   // 11. Patches (heading backgrounds)

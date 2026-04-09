@@ -166,7 +166,7 @@ export class LarkCli {
       return false;
     }
   }
-  appendDoc(docId: string, markdown: string): boolean {
+  appendDoc(docId: string, markdown: string, imageDir?: string): boolean {
     try {
       const args = [
         "docs",
@@ -175,6 +175,9 @@ export class LarkCli {
         "--mode", "append",
         "--markdown", markdown,
       ];
+      if (imageDir) {
+        args.push("--image-dir", imageDir);
+      }
       const out = execFileSync(this.cli, args, {
         encoding: "utf-8",
         timeout: 300_000,
@@ -201,7 +204,8 @@ export class LarkCli {
     title: string,
     markdown: string,
     wikiSpace = "7620053427331681234",
-    wikiNode?: string
+    wikiNode?: string,
+    imageDir?: string
   ): { doc_id: string; url: string; boardTokens: string[] } | null {
     try {
       const args = ["docs", "+create", "--title", title, "--markdown", markdown];
@@ -209,6 +213,9 @@ export class LarkCli {
         args.push("--wiki-node", wikiNode);
       } else if (wikiSpace) {
         args.push("--wiki-space", wikiSpace);
+      }
+      if (imageDir) {
+        args.push("--image-dir", imageDir);
       }
 
       const out = execFileSync(this.cli, args, {
@@ -298,7 +305,7 @@ export class LarkCli {
 
   
   /** Replace doc content with new markdown. */
-  updateDoc(docId: string, markdown: string): { ok: boolean; boardTokens: string[] } {
+  updateDoc(docId: string, markdown: string, imageDir?: string): { ok: boolean; boardTokens: string[] } {
     try {
       const args = [
         "docs", "+update",
@@ -306,6 +313,9 @@ export class LarkCli {
         "--mode", "overwrite",
         "--markdown", markdown,
       ];
+      if (imageDir) {
+        args.push("--image-dir", imageDir);
+      }
       const out = execFileSync(this.cli, args, {
         encoding: "utf-8",
         timeout: 300_000,

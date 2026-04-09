@@ -98,6 +98,8 @@ export function analyzeMarkdown(mdText: string): AnalysisReport {
   // Document type classification
   if (report.hasTables && report.tableRows >= 50) {
     report.documentType = "catalog_table";
+  } else if (report.hasTables && report.headingCount >= 3) {
+    report.documentType = "mixed";
   } else if (report.hasTables && report.tableRows > 0) {
     report.documentType = "data_table";
   } else if (report.headingCount >= 3) {
@@ -126,7 +128,8 @@ export function analyzeMarkdown(mdText: string): AnalysisReport {
     if (report.titleHighlightCandidate && report.documentType === "catalog_table") {
       report.suggestedModules.push("title_highlight");
     }
-  } else if (report.documentType === "narrative") {
+  } else if (report.documentType === "narrative" || report.documentType === "mixed") {
+    report.suggestedModules.push("table_safety", "category_color");
     if (report.calloutCount === 0) {
       report.suggestedModules.push("opening_callout");
     }

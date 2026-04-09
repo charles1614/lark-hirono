@@ -248,6 +248,62 @@ function main() {
   }
 }
 
+// ─── Auto-highlight Metrics ─────────────────────────────────────────────
+
+// Context words that indicate a metric is a result/finding worth highlighting
+const RESULT_CONTEXT = /(?:提升|降低|缩短|减少|增加|节省|改善|优于|胜过|低于|高于|超越|实现|达到|不足|达|倍|compared|speedup|reduction|improvement|saving)/;
+
+/**
+ * Auto-highlight quantitative metrics in narrative/mixed documents.
+ *
+ * Wraps percentages (71.2%) and multipliers (4.3×, 4.3\times) in {red:...}
+ * when they appear near result-context words. Skips code fences, tables,
+ * headings, and already-highlighted content.
+ */
+export function autoHighlightMetrics(md: string): { text: string; count: number } {
+  let count = 0;
+
+  const parts = md.split(/(```[\s\S]*?```)/g);
+  const result = parts.map((part) => {
+    if (part.startsWith("```")) return part;
+
+    return part.split("\n").map((line) => {
+      const trimmed = line.trim();
+      // Skip table rows, headings, already-colored text, callout tags
+      if (trimmed.startsWith("|") || trimmed.startsWith("#") ||
+          trimmed.startsWith("<callout") || trimmed.startsWith("</callout") ||
+          trimmed.startsWith("<equation>")) {
+        return line;
+      }
+
+      // Only highlight if line has result-context words
+      if (!RESULT_CONTEXT.test(line)) return line;
+
+      // Highlight percentages: 71.2%, 47%
+      line = line.replace(/(?<!\{red:)(?<!<text[^>]*>)(\d+\.?\d*\s*%)/g, (match) => {
+        count++;
+        return `{red:${match}}`;
+      });
+
+      // Highlight multipliers with × symbol: 4.3×, 9.0×
+      line = line.replace(/(?<!\{red:)(?<!<text[^>]*>)(\d+\.?\d*\s*[×x]\b)/g, (match) => {
+        count++;
+        return `{red:${match}}`;
+      });
+
+      // Highlight LaTeX multipliers: $4.3\times$ (already converted to <equation>)
+      line = line.replace(/(?<!\{red:)(<equation>\d+\.?\d*\\times<\/equation>)/g, (match) => {
+        count++;
+        return `{red:${match}}`;
+      });
+
+      return line;
+    }).join("\n");
+  });
+
+  return { text: result.join(""), count };
+}
+
 if (process.argv[1]?.endsWith("highlight.ts")) {
   main();
 }

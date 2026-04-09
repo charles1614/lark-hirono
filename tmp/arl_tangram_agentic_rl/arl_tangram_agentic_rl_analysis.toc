@@ -1,0 +1,73 @@
+\contentsline {section}{\numberline {1}论文元信息与分类}{3}{section.1}%
+\contentsline {section}{\numberline {2}核心摘要与定性评估}{3}{section.2}%
+\contentsline {subsection}{\numberline {2.1}技术摘要}{3}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}定性评估矩阵}{4}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}与原文摘要的对比}{4}{subsection.2.3}%
+\contentsline {section}{\numberline {3}创新贡献与研究定位}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}技术贡献清单}{5}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}研究脉络定位}{5}{subsection.3.2}%
+\contentsline {paragraph}{RL 框架优化}{5}{paragraph*.3}%
+\contentsline {paragraph}{智能体资源管理}{5}{paragraph*.4}%
+\contentsline {paragraph}{云计算资源自动伸缩}{6}{paragraph*.5}%
+\contentsline {subsection}{\numberline {3.3}与最近似工作的深度对比}{6}{subsection.3.3}%
+\contentsline {section}{\numberline {4}研究背景与问题形式化}{6}{section.4}%
+\contentsline {subsection}{\numberline {4.1}技术背景与现状}{6}{subsection.4.1}%
+\contentsline {paragraph}{Agentic RL 的资源需求特征}{6}{paragraph*.7}%
+\contentsline {paragraph}{外部资源的多样性}{6}{paragraph*.8}%
+\contentsline {paragraph}{现有 RL 框架的局限}{7}{paragraph*.9}%
+\contentsline {subsection}{\numberline {4.2}核心技术挑战}{7}{subsection.4.2}%
+\contentsline {paragraph}{挑战一：轨迹级 over-provisioning}{7}{paragraph*.10}%
+\contentsline {paragraph}{挑战二：任务级 over-provisioning}{7}{paragraph*.11}%
+\contentsline {paragraph}{挑战三：action 级调度的实现复杂性}{7}{paragraph*.13}%
+\contentsline {subsection}{\numberline {4.3}问题形式化}{7}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}研究空白分析}{8}{subsection.4.4}%
+\contentsline {section}{\numberline {5}技术方法与系统架构}{8}{section.5}%
+\contentsline {subsection}{\numberline {5.1}整体架构}{8}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}关键组件深入分析}{8}{subsection.5.2}%
+\contentsline {subsubsection}{\numberline {5.2.1}Action Formulation：统一的异构资源建模}{8}{subsubsection.5.2.1}%
+\contentsline {paragraph}{向量化资源代价建模}{8}{paragraph*.16}%
+\contentsline {paragraph}{弹性建模（Elasticity Modeling）}{10}{paragraph*.17}%
+\contentsline {paragraph}{执行时延建模（Execution Duration Modeling）}{10}{paragraph*.18}%
+\contentsline {subsubsection}{\numberline {5.2.2}弹性资源调度算法}{10}{subsubsection.5.2.2}%
+\contentsline {subsubsection}{\numberline {5.2.3}CPU Manager via AOE}{11}{subsubsection.5.2.3}%
+\contentsline {paragraph}{Breakdown 机制}{11}{paragraph*.19}%
+\contentsline {paragraph}{弹性 DoP 支持}{11}{paragraph*.20}%
+\contentsline {paragraph}{Pool 机制}{11}{paragraph*.21}%
+\contentsline {subsubsection}{\numberline {5.2.4}GPU Manager via EOE}{11}{subsubsection.5.2.4}%
+\contentsline {paragraph}{Breakdown 机制（EOE）}{11}{paragraph*.23}%
+\contentsline {paragraph}{弹性 DoP}{12}{paragraph*.24}%
+\contentsline {paragraph}{Pool 机制：多级 chunk 结构}{12}{paragraph*.25}%
+\contentsline {subsection}{\numberline {5.3}数据流与工作流}{12}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}技术栈与部署}{12}{subsection.5.4}%
+\contentsline {section}{\numberline {6}实验设计与评估分析}{12}{section.6}%
+\contentsline {subsection}{\numberline {6.1}实验配置}{13}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}核心实验结果}{13}{subsection.6.2}%
+\contentsline {subsubsection}{\numberline {6.2.1}端到端性能（End-to-End Performance）}{13}{subsubsection.6.2.1}%
+\contentsline {subsubsection}{\numberline {6.2.2}系统扩展性（Scalability）}{14}{subsubsection.6.2.2}%
+\contentsline {paragraph}{CPU 扩展性}{14}{paragraph*.30}%
+\contentsline {paragraph}{GPU 扩展性}{14}{paragraph*.31}%
+\contentsline {subsection}{\numberline {6.3}消融实验分析}{15}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}系统开销分析}{15}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}实验方法学评估}{15}{subsection.6.5}%
+\contentsline {section}{\numberline {7}批判性分析}{16}{section.7}%
+\contentsline {subsection}{\numberline {7.1}技术优势}{16}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}技术不足与局限性}{16}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}核心假设审视}{17}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}潜在失效模式}{17}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}可复现性评估}{17}{subsection.7.5}%
+\contentsline {section}{\numberline {8}数学与算法深入分析}{17}{section.8}%
+\contentsline {subsection}{\numberline {8.1}核心公式分析}{18}{subsection.8.1}%
+\contentsline {subsubsection}{\numberline {8.1.1}弹性函数的设计}{18}{subsubsection.8.1.1}%
+\contentsline {subsubsection}{\numberline {8.1.2}ACT 近似目标的分解}{18}{subsubsection.8.1.2}%
+\contentsline {subsection}{\numberline {8.2}算法描述}{18}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}复杂度分析}{18}{subsection.8.3}%
+\contentsline {subsection}{\numberline {8.4}理论分析}{18}{subsection.8.4}%
+\contentsline {section}{\numberline {9}结论与未来展望}{19}{section.9}%
+\contentsline {subsection}{\numberline {9.1}核心结论}{19}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}实践意义与设计启示}{19}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}局限性与未来方向}{19}{subsection.9.3}%
+\contentsline {subsubsection}{\numberline {9.3.1}作者提出的未来方向}{19}{subsubsection.9.3.1}%
+\contentsline {subsubsection}{\numberline {9.3.2}建议的研究方向}{19}{subsubsection.9.3.2}%
+\contentsline {section}{\numberline {10}延伸阅读建议}{20}{section.10}%
+\contentsline {subsection}{\numberline {10.1}前置阅读（理解本文的基础）}{20}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}后续阅读（本文之后的进展）}{20}{subsection.10.2}%

@@ -1,0 +1,154 @@
+=== FIGURE 1 (page 2): Comparison of existing approaches and ARL-Tangram ===
+Existing approaches:
+- Training timeline bars (colored blocks)
+- Row 1: LLM
+- Row 2 (pink/red): marked with "x"
+- Row 3 (purple)
+- Row 4 (yellow)
+
+Legend boxes on right:
+"Offline Optimization"
+"Blocked by RL Generation Training Phase"
+
+Labeled "External Resources" with pie chart showing subdivided triangle/circular sections colored in yellow, pink, green, orange, etc.
+
+Caption text shows: "Figure 1: Comparison of existing approaches and ARL-Tangram"
+
+Body text mentions: "RL Existing", "ARL-Tangram", resource management, external resources costs
+
+
+=== FIGURE 2 (page 3): One training step of agentic RL ===
+Diagram showing training workflow:
+
+Left side box labeled "multi-turn":
+- Elements: "SLUM" (with arrow)
+- "Fetch Observation"
+- "Step Policy"
+- "External Resource Invocation"
+- Connection symbols
+
+Right side: "Rollout" box with internal elements
+
+Top right: "Train" box (in orange/tan color)
+
+At bottom: "Figure 2: One training step of agentic RL training"
+
+Flow shows progression from multi-turn through Rollout to Train phase
+
+
+=== FIGURE 3 (page 4): ACT under resource quantities, SM activity, time ratios, invocations ===
+Four bar chart subplots arranged in 2x2 grid:
+
+Top left: Chart with y-axis values appearing to range from 0 to some value with multiple bars
+Top right: Similar bar chart layout
+Bottom left: Bar chart with multiple colored bars
+Bottom right: Bar chart labeled with "Invocations"
+
+All charts have:
+- X-axis labels (numbers appearing to be task identifiers)
+- Y-axis with numerical scales
+- Multiple colored bars (appears to be comparing different metrics)
+- Legend indicators
+
+Caption: "Figure 2: One training step of agentic RL training"
+
+
+=== FIGURE 4 (page 6): System overview of ARL-Tangram ===
+Architecture diagram showing system components and connections.
+
+Text visible includes section numbering and references to:
+- "53% for AI coding (Figure 3(c))"
+- References to external resources
+- Discussion of resource management
+- Task configuration details
+- GPU and inference-related specifications
+
+Body contains dense technical text discussing system architecture, resource allocation, external services deployment, and configuration details.
+
+
+=== FIGURE 5 (page 11): Heterogeneous resource management ===
+Technical description page with text discussing:
+- "Heterogeneous Resource Managers"
+- "Pool (§2.4)" reference
+- "5" section marker
+- "5.1 Basic Resource Manager"
+- "5.2 CPU Manager via AOE"
+
+Text mentions:
+- Resource allocation strategies
+- Kubernetes (K8s) and Docker references
+- Resource quota management
+- CPU configurations
+- Pool design and specialization
+- AOE (appears to be a specific system component)
+
+
+=== FIGURE 6 (page 13): ACT under different RL tasks ===
+Bar chart diagram showing multiple grouped bars.
+
+Visible labels/text:
+- Chart appears to show task comparisons
+- Multiple categories with bars of different heights
+- Y-axis showing numerical scale
+- X-axis showing different task identifiers
+- Legend indicating different metrics being compared
+- Step durations indicated by arrows between bars
+- Caption indicates: "Figure 6: ACT under different RL tasks. The numbers and arrows indicate the step durations of RL tasks."
+
+
+=== FIGURE 7 (page 14): End-to-end performance for different RL tasks ===
+Multi-panel chart with 4 subplots showing performance metrics.
+
+Each subplot labeled:
+- (a) "AI Coding"
+- (b) "MOPD"
+- (c) "DeepSearch"
+- (d) "M+D"
+
+Legend box at top showing:
+- "LLM" (blue)
+- "Tool" (orange)
+- "Reward" (green)
+
+Y-axis appears to show "Normalized Duration" or similar metric
+X-axis shows progression/steps
+
+Bars and lines showing performance improvements or trajectories across different task types.
+
+Caption: "Figure 7: End-to-end performance for different RL tasks. Numbers in boxes indicate absolute durations (s)."
+
+
+=== FIGURE 8 (page 15): Scalability of different external resources ===
+Four subplots arranged showing scalability characteristics:
+
+Top left: "Scalability of CPU" - chart showing lines trending across x-axis (appears to be CPU count/capacity)
+Top right: "Scalability of CPU" - similar trend chart
+Bottom left: Chart with multiple trending lines
+Bottom right: Chart labeled showing scalability patterns
+
+Legend elements showing:
+- Different task types or resource configurations
+- Multiple colored lines (orange, blue, green, etc.)
+- Y-axis showing numerical metrics
+- X-axis showing resource quantity scales
+
+Overall caption indicates: "Figure 8: Scalability of different external resources, in RL batch size and resource capacity."
+
+
+=== FIGURE 9 (page 16): Impact of ARL-Tangram scheduling ===
+Technical discussion text with embedded chart/graph content.
+
+Visible text references:
+- "6.3 System Scalability"
+- "Scalability of GPUs" discussion
+- "ServerlessLLM"
+- References to batch size and queue interactions
+- Discussion of resource efficiency
+- Mentions of throughput optimization
+- Technical specifications about resource allocation
+
+Chart content shows comparative analysis with multiple lines/bars indicating different scheduling scenarios or resource configurations.
+
+Footer notation: "Figure 9(b) Right further highlights that ARL-Tangram's advantage in reducing external resource cost under a fixed batch size of 1024, ARL-Tangram is able to serve 10 external services only 29% ..."
+
+Caption: "Figure 9: Impact of ARL-Tangram scheduling"

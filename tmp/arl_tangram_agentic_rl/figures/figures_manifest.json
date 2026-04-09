@@ -1,0 +1,92 @@
+[
+  {
+    "fig_num": 1,
+    "filename": "fig1.png",
+    "caption": "Figure 1 Comparison of existing approaches and ARL-Tangram. 1",
+    "page": 2,
+    "width": 1983,
+    "height": 946,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 2,
+    "filename": "fig2.png",
+    "caption": "Figure 2 One training step of agentic RL.",
+    "page": 4,
+    "width": 1407,
+    "height": 479,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 3,
+    "filename": "fig3.png",
+    "caption": "Figure 3 (a): average ACT under 1× and 0.5× external resource quantities. (b): SM activity of",
+    "page": 5,
+    "width": 1975,
+    "height": 674,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 4,
+    "filename": "fig4.png",
+    "caption": "Figure 4 System overview of ARL-Tangram.",
+    "page": 7,
+    "width": 1218,
+    "height": 828,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 5,
+    "filename": "fig5.png",
+    "caption": "Figure 5 Heterogeneous resource management.",
+    "page": 12,
+    "width": 1596,
+    "height": 733,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 6,
+    "filename": "fig6.png",
+    "caption": "Figure 6 ACT under different RL tasks. The numbers and arrows indicate the step durations of",
+    "page": 14,
+    "width": 1975,
+    "height": 622,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 7,
+    "filename": "fig7.png",
+    "caption": "Figure 7 End-to-end performance for different RL tasks. Numbers in bars indicate absolute",
+    "page": 15,
+    "width": 1974,
+    "height": 625,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 8,
+    "filename": "fig8.png",
+    "caption": "Figure 8 Scalability of different external resources, in RL batch size and resource capacity.",
+    "page": 16,
+    "width": 1974,
+    "height": 540,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  },
+  {
+    "fig_num": 9,
+    "filename": "fig9.png",
+    "caption": "Figure 9 Impact of ARL-Tangram scheduling.",
+    "page": 17,
+    "width": 1218,
+    "height": 556,
+    "n_image_blocks": 0,
+    "render_type": "vector-only"
+  }
+]

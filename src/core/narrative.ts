@@ -116,15 +116,57 @@ export function stripChatbotTail(md: string): { text: string; stripped: boolean 
 
 /** Convert leading blockquotes to callout format. */
 export function convertBlockquotesToCallouts(md: string): { text: string; converted: number } {
-  const tldrRe = />\s*TL;DR/i;
-  const summaryRe = />\s*(?:核心思想|关键结论|一句话总结|一句话定位|核心区别|本质)/;
-  const importantRe = />[^>]*\*\*(?:核心|关键|重要|注意|TL;DR|总结|一句话)/;
+  // Patterns handle optional 📌 emoji prefix and **bold** wrappers
+  const tldrRe = />\s*(?:📌\s*)?(?:\*\*)?TL;DR(?:\*\*)?/i;
+  const summaryRe = />\s*(?:📌\s*)?(?:\*\*)?(?:核心思想|关键结论|一句话总结|一句话定位|核心区别|本质)/;
+  const importantRe = />[^>]*\*\*(?:核心|关键|重要|注意|总结|一句话)/;
+  // Catch-all: any > 📌 **annotation**: ... blockquote (scholarly annotation style)
+  const pinAnnotationRe = />\s*📌\s*\*\*[^*]+\*\*/;
 
   let converted = 0;
   const lines = md.split("\n");
   const out: string[] = [];
   let inBlockquote = false;
   let bqLines: string[] = [];
+
+  const convertBlockquote = (bqLines: string[]): boolean => {
+    const bqText = bqLines.join("\n").trim();
+    const content = bqLines.map((l) => l.replace(/^>\s*/, "")).join("\n");
+
+    if (tldrRe.test(bqText)) {
+      out.push(
+        ``,
+        `<callout emoji="bulb" background-color="light-blue" border-color="light-blue">`,
+        content,
+        `</callout>`,
+      );
+    } else if (summaryRe.test(bqText)) {
+      out.push(
+        ``,
+        `<callout emoji="pushpin" background-color="light-green" border-color="light-green">`,
+        content,
+        `</callout>`,
+      );
+    } else if (importantRe.test(bqText)) {
+      out.push(
+        ``,
+        `<callout emoji="warning" background-color="light-yellow" border-color="light-yellow">`,
+        content,
+        `</callout>`,
+      );
+    } else if (pinAnnotationRe.test(bqText)) {
+      // Default scholarly annotation → blue callout
+      out.push(
+        ``,
+        `<callout emoji="bulb" background-color="light-blue" border-color="light-blue">`,
+        content,
+        `</callout>`,
+      );
+    } else {
+      return false;
+    }
+    return true;
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -136,39 +178,9 @@ export function convertBlockquotesToCallouts(md: string): { text: string; conver
     }
 
     if (inBlockquote) {
-      const bqText = bqLines.join("\n").trim();
-
-      if (tldrRe.test(bqText)) {
-        const content = bqLines.map((l) => l.replace(/^>\s*/, "")).join("\n");
-        out.push(
-          ``,
-          `<callout emoji="bulb" background-color="light-blue" border-color="light-blue">`,
-          content,
-          `</callout>`,
-        );
-        converted++;
-      } else if (summaryRe.test(bqText)) {
-        // Convert to green callout
-        const content = bqLines.map((l) => l.replace(/^>\s*/, "")).join("\n");
-        out.push(
-          ``,
-          `<callout emoji="pushpin" background-color="light-green" border-color="light-green">`,
-          content,
-          `</callout>`,
-        );
-        converted++;
-      } else if (importantRe.test(bqText)) {
-        // Convert to orange callout
-        const content = bqLines.map((l) => l.replace(/^>\s*/, "")).join("\n");
-        out.push(
-          ``,
-          `<callout emoji="warning" background-color="light-yellow" border-color="light-yellow">`,
-          content,
-          `</callout>`,
-        );
+      if (convertBlockquote(bqLines)) {
         converted++;
       } else {
-        // Keep as plain blockquote
         out.push(...bqLines);
       }
 
@@ -179,9 +191,13 @@ export function convertBlockquotesToCallouts(md: string): { text: string; conver
     out.push(line);
   }
 
-  // Handle trailing blockquote
+  // Handle trailing blockquote (at end of file)
   if (inBlockquote && bqLines.length > 0) {
-    out.push(...bqLines);
+    if (convertBlockquote(bqLines)) {
+      converted++;
+    } else {
+      out.push(...bqLines);
+    }
   }
 
   return { text: out.join("\n"), converted };

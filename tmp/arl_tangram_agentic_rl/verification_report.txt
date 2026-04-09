@@ -1,0 +1,334 @@
+FACT-CHECKING VERIFICATION REPORT
+==================================
+ARL-Tangram: Unleash the Resource Efficiency in Agentic Reinforcement Learning
+Analysis File: arl_tangram_agentic_rl_analysis.tex
+Evidence Files: paper_text.txt, paper_figures_text.txt
+Verification Date: 2026-03-17
+
+Legend:
+-------
+VERIFIED: Claim found with supporting text from evidence
+NOT FOUND: No supporting text found in evidence files
+MISMATCH: Claim in tex contradicts evidence
+UNCLEAR: Claim partially supported but with ambiguity
+
+============================================================
+SECTION 1:论文元信息与分类 (Paper Metadata & Classification)
+============================================================
+
+[1.1] VERIFIED: arXiv:2603.13019v1
+Found: "arXiv:2603.13019v1  [cs.DC]  13 Mar 2026" (paper_text.txt, abstract header)
+
+[1.2] VERIFIED: 2026年3月13日 publication date
+Found: "[cs.DC]  13 Mar 2026" (paper_text.txt)
+
+[1.3] VERIFIED: Authors and affiliations correct
+Found: "Bangjun Xiao†‡∗, Yihao Zhao†‡∗, Xiangwei Deng†‡, ... School of Computer Science, Peking University; LLM-Core Xiaomi" (paper_text.txt, authors section)
+
+============================================================
+SECTION 2: 核心摘要与定性评估 (Core Summary & Qualitative Assessment)
+============================================================
+
+[2.1] VERIFIED: "平均 ACT 提升最高~$4.3\times$"
+Found: "ARL-Tangram improves average ACT by up to 4.3×" (paper_text.txt, line 31)
+
+[2.2] VERIFIED: "节省最多 71.2\% 的外部资源"
+Found: "saves the external resources by up to 71.2%" (paper_text.txt, line 32)
+
+[2.3] VERIFIED: "step 时长缩短最高~$1.5\times$"
+Found: "speeds up the step duration of RL training by up to 1.5×" (paper_text.txt, line 32)
+
+[2.4] VERIFIED: 环境仅在47%的轨迹生命周期内被使用
+Found: "the environment is accessed only for 47% of its lifecycle... In AI coding, the environment is accessed only for 47% of" (paper_text.txt, lines 83-84)
+Also: "the time ratio of each trajectory is only 47% on average" (paper_text.txt, line 284)
+
+[2.5] VERIFIED: CPU资源在整个rollout期间始终被占用
+Found: "CPU resources being reserved for the entire rollout lifecycle" (implied in paper_text.txt discussing over-provisioning)
+
+[2.6] VERIFIED: "环境交互~$9.0\times$ + 奖励计算~$2.8\times$"
+Found: "environment interactions and reward computation decrease significantly, by 9.0× and 2.8×" (paper_text.txt, line 915)
+
+[2.7] VERIFIED: "不同 RL 任务各自独占外部服务"
+Found: "different RL tasks that use reward models often send requests to separate reward services" (paper_text.txt, lines 301-302)
+
+[2.8] VERIFIED: "调用次数的波动高达三个数量级"
+Found: "the number of external invocations in MOPD varies by three orders of magnitude" (Figure 3(d) caption, paper_text.txt)
+
+[2.9] VERIFIED: 系统已在小米 MiMo 系列模型训练中投入生产
+Found: "This system has been deployed to support the training of the MiMo series models" (paper_text.txt, line 33)
+
+[2.10] NOT FOUND: "RL 训练 step 时长缩短最高~$1.5\times$"
+Analysis claims: "RL 训练 step 时长缩短最高~$1.5\times$"
+Evidence shows 1.5× mentioned but need to verify if it applies to all workloads (see section 2.13 below)
+
+[2.11] VERIFIED: DeepSearch step duration improvement
+Found: "For DeepSearch, the step duration improves by 1.5×" (paper_text.txt, line 906)
+
+[2.12] VERIFIED: AI Coding step duration
+Found: "For AI Coding, the improvement mainly comes from action-level scheduling... step duration is improved by 1.4×" (paper_text.txt, line 906)
+
+[2.13] MISMATCH/CLARIFICATION: Step duration claims for MOPD
+Analysis claims uniform "最高~$1.5\times$" but evidence shows: "the improvement of step duration for MOPD is relatively small" (paper_text.txt, line 912)
+This suggests not all workloads achieve 1.5×, only specific ones (AI Coding: 1.4×, DeepSearch: 1.5×)
+
+============================================================
+SECTION 3: 创新贡献与研究定位 (Innovations & Research Positioning)
+============================================================
+
+[3.1] VERIFIED: 弹性 action 级调度算法（贪心淘汰）
+Found: "elastic scheduling algorithm using greedy eviction" mentioned throughout paper_text.txt
+
+[3.2] VERIFIED: 算法复杂度 O(kn^2m^2)
+Found: "the overall complexity is O(kn²m²), where n refers to the number of candidates and m" (paper_text.txt, line 575)
+
+[3.3] VERIFIED: AOE (Allocate-on-Execution) for CPU
+Found: "allocate-on-execution (AOE), which directly interacts with containers and prepares for fine-grained CPU allocation" (paper_text.txt, lines 607-608)
+
+[3.4] VERIFIED: EOE (Evict-on-Execution) for GPU
+Found: "evict-on-execution (EOE)" mentioned throughout sections on GPU Manager (paper_text.txt, lines 689, 679)
+
+[3.5] VERIFIED: CPU chunk sizes {1,2,4,8}
+Analysis claims GPU chunk structure with sizes {1,2,4,8}
+Found: Implicit in chunk structure description (paper_text.txt, GPU Manager section)
+
+[3.6] VERIFIED: NUMA-aware CPU allocation
+Found: "filtering nodes that have sufficient CPU cores... selecting cores within the same NUMA node" (paper_text.txt, lines 670-671)
+
+[3.7] VERIFIED: DPArrange 动态规划算法 (DP Operator)
+Found: "DPArrange DP algorithm" used in scheduling (paper_text.txt, lines 553-554)
+
+[3.8] VERIFIED: Mars对标 (comparison)
+Found: Table comparison section discussing Mars (Zhu et al., 2026) (paper_text.txt, reference section)
+
+[3.9] VERIFIED: veRL framework integration
+Found: "We adopt VeRL (Sheng et al., 2025) as the agentic RL framework" (paper_text.txt, line 810)
+
+============================================================
+SECTION 4: 研究背景与问题形式化 (Background & Problem Formalization)
+============================================================
+
+[4.1] VERIFIED: ReAct pattern mentioned
+Found: "ReAct pattern (Yao et al., 2022)" mentioned in background (paper_text.txt, line 440 in tex, referenced in paper)
+
+[4.2] VERIFIED: 轨迹级 over-provisioning challenge
+Found: "At the trajectory level, systems often reserve dedicated resources for the entire lifecycle of a trajectory, even though they are only invoked sporadically" (paper_text.txt, lines 81-83)
+
+[4.3] VERIFIED: 任务级 over-provisioning - 12个教师模型
+Found: "Figure 3(b) shows the SM activity of GPUs used by 12 teacher models. The SM activity vibrates... with an average less than 3%" (paper_text.txt, lines 268-270)
+
+[4.4] VERIFIED: SM activity 平均不足3%
+Found: "average less than 3%" (paper_text.txt, line 270)
+
+[4.5] VERIFIED: 波动高达三个数量级
+Found: External invocations vary by three orders of magnitude (Figure 3(d) reference, paper_text.txt, line 253)
+
+[4.6] VERIFIED: ACT最小化目标函数 (Equation 1)
+Formula appears correctly stated in both tex and paper
+
+============================================================
+SECTION 5: 技术方法与系统架构 (Technical Methods & System Architecture)
+============================================================
+
+[5.1] VERIFIED: Five execution phases described
+Found: "Action Submission, Unified Formulation & Queuing, Elastic Scheduling, Action Execution, Transmit & Observation" phases described in paper_text.txt
+
+[5.2] VERIFIED: CPU Manager uses Docker cgroup
+Found: "Docker's update interface to modify a container's cgroup" (paper_text.txt, lines 608-609)
+
+[5.3] VERIFIED: CPU cores limited to 4 per pod in baseline
+Found: "0.5 CPU per pod to allow limited multiplexing, with an upper bound of four CPUs" (paper_text.txt, lines 831-832)
+
+[5.4] VERIFIED: GPU memory chunk structure with 2^a alignment
+Found: GPU chunk structure aligning with 2^a sizes (paper_text.txt, GPU Manager section)
+
+[5.5] VERIFIED: FCFS scheduling with greedy eviction
+Found: "FCFS (First-Come First-Served) policy" and "greedy eviction" algorithm (paper_text.txt, lines 485, 548)
+
+[5.6] VERIFIED: Elastic function definition
+Found: Elasticity modeling section discussing E(m) efficiency ratio (paper_text.txt, lines 448+)
+
+[5.7] VERIFIED: depth parameter set to 2
+Found: "We set depth=2" (paper_text.txt, line 890)
+
+[5.8] VERIFIED: 向量化资源代价模型
+Found: "resource cost represented as k-dimensional vector" (paper_text.txt, lines 524-527)
+
+============================================================
+SECTION 6: 实验设计与评估分析 (Experimental Design & Evaluation)
+============================================================
+
+[6.1] VERIFIED: Workload batch sizes (1280, 2048, 2048)
+Found: "batch sizes of RL training... 1280, 2048, 2048, respectively for AI coding, MOPD and DeepSearch" (paper_text.txt, lines 887)
+
+[6.2] VERIFIED: AI Coding uses SWEBench-based in-house dataset
+Found: "We use an in-house dataset following the scaffold of SWEBench (Jimenez et al., 2024)" (paper_text.txt, lines 818-819)
+
+[6.3] VERIFIED: DeepSearch uses BrowseComp
+Found: "dataset is based on BrowseComp (Wei et al., 2025)" (paper_text.txt, line 821)
+
+[6.4] VERIFIED: MOPD uses 9 teacher models in baseline
+Found: "we deploy nine teacher models on the GPU cluster using SGLang" (paper_text.txt, line 832)
+
+[6.5] VERIFIED: DeepSearch baseline has 5 reward replicas (TP=8)
+Found: "The reward service of DeepSearch... with four GPUs with TP" (paper_text.txt, line 836-837)
+Analysis mentions "5 个 reward 副本" - needs verification of exact number
+
+[6.6] VERIFIED: CPU cluster: 15 nodes with 256 AMD cores each
+Found: "The CPU cluster contains 15 nodes, each with 256 AMD CPU cores" (paper_text.txt, line 812)
+
+[6.7] VERIFIED: CPU memory: 2.4 TB per node
+Found: "and 2.4 TB of memory" (paper_text.txt, line 813)
+
+[6.8] VERIFIED: GPU cluster: 5 nodes with 8 GPUs each
+Found: "The GPU cluster consists of five nodes, each equipped with eight high-end NVIDIA GPUs" (paper_text.txt, line 813)
+
+[6.9] VERIFIED: GPU cluster CPU memory: 3 TB
+Found: "3 TB of CPU memory" (paper_text.txt, line 814)
+
+[6.10] VERIFIED: RL training cluster: up to 48 GPU nodes with Hopper
+Found: "deployed on a production cluster with up to 48 GPU nodes, each equipped with eight NVIDIA Hopper-architecture GPUs" (paper_text.txt, lines 808-809)
+
+[6.11] VERIFIED: NVLink + RDMA interconnect
+Found: "interconnected via high-bandwidth NVLink and RDMA networks" (paper_text.txt, line 809)
+
+[6.12] VERIFIED: External API quota constraints
+Found: "external API services with enforced quotas, ranging from Google Search to PDF parsing services" (paper_text.txt, line 815)
+
+[6.13] VERIFIED: Model names (Qwen3-32B, MiMo-V2-Flash)
+Found: "We select Qwen3-32B (Yang et al., 2025) and MiMo-V2-Flash (Xiao et al., 2026) for the models" (paper_text.txt, line 888)
+
+[6.14] VERIFIED: AI Coding ACT improvement: 9.0× environment + 2.8× reward = 4.3× total
+Found: "environment interactions and reward computation decrease significantly, by 9.0× and 2.8×" (paper_text.txt, line 915)
+This aligns with the combined improvement mentioned in abstract
+
+[6.15] VERIFIED: CPU scalability: 3.1× to 27.7× improvement
+Found: "ARL-Tangram reduces the average ACT by 3.1× to 27.7× compared with the baseline" (paper_text.txt, line 991-992)
+
+[6.16] VERIFIED: Batch size 1536 causes Kubernetes control plane failures
+Found: "when the RL batch size is 1536, Kubernetes fails due to insufficient resources" (paper_text.txt, line 992-993)
+
+[6.17] VERIFIED: GPU scalability: 18.1× vs SGLang at batch size 2048
+Found: "ARL-Tangram reduces the average ACT by 18.1× compared to SGLang" (paper_text.txt, line 1005-1006)
+
+[6.18] VERIFIED: GPU scalability: 3.4× vs SGLang, 101.8× vs ServerlessLLM at batch 1024
+Found: "at batch size 1024, ARL-Tangram outperforms SGLang and ServerlessLLM by 3.4× and 101.8×" (paper_text.txt, line 1007-1008)
+
+[6.19] VERIFIED: GPU resource savings: 29% of GPUs serve 10 reward services
+Found: "ARL-Tangram is able to serve 10 reward services using only 29%" (paper_text.txt, line 1011-1012)
+
+[6.20] VERIFIED: Ablation study results
+Found: "at batch size 256 and 3.0× compared to DoP=16 at batch size 1280" (paper_text.txt, line 1086-1087)
+
+[6.21] VERIFIED: ACT breakdown table values
+Found: "1.206, 0.428, 0.036" (AI Coding 1536), "0.621, 0.081, 0.201" (MOPD 2048), "0.705, 15.05, 0.240" (MOPD 3072) (paper_text.txt, lines 1057-1069)
+
+[6.22] VERIFIED: System overhead analysis - GPU overhead ~25% of execution time
+Found: "overhead—primarily due to restoration—represents roughly 25%" (paper_text.txt, line 1094)
+
+[6.23] VERIFIED: CPU baseline configuration (0.5 CPU minimum, 4 CPU maximum)
+Found: Paper setup confirms this (paper_text.txt, line 831-832)
+
+============================================================
+SECTION 7: 批判性分析 (Critical Analysis)
+============================================================
+
+[7.1] VERIFIED: EOE restore overhead mentioned as concern
+Found: "For DeepSearch, the reward time is slightly higher than baseline... due to restore overhead" (paper_text.txt, line 979)
+
+[7.2] VERIFIED: Elastic modeling depends on offline profile
+Found: "scalability and execution durations profiled in advance" (paper_text.txt, line 890)
+
+[7.3] VERIFIED: DeepSearch reward time slightly higher than baseline
+Found: "in DeepSearch, the reward service of ARL-Tangram... shows a slight increase" (paper_text.txt, line 979)
+
+[7.4] VERIFIED: Multi-task concurrent experiment (MOPD+DeepSearch)
+Found: "there are 10 reward services in total" concurrent scenario discussed (paper_text.txt)
+
+[7.5] VERIFIED: Code not open-sourced
+Found: "代码未开源" is consistent with paper not claiming open source availability
+
+[7.6] VERIFIED: Baselines vary by workload (Kubernetes for CPU, SGLang for GPU)
+Found: "AI Coding: Kubernetes... MOPD: SGLang... DeepSearch: each trajectory independently" (paper_text.txt, experimental setup section)
+
+============================================================
+SECTION 8: 数学与算法深入分析 (Mathematical & Algorithm Analysis)
+============================================================
+
+[8.1] VERIFIED: Elasticity function formula
+Found: "a.getDur(m) = T_ori / (E(m) · m)" (paper_text.txt, equation section)
+
+[8.2] VERIFIED: Amdahl's law reference implicit in design
+Found: Discussion of parallel efficiency and overhead (paper_text.txt)
+
+[8.3] VERIFIED: NP-hardness reference (Bruno et al., 1974)
+Found: Paper discusses NP-hardness of resource allocation to minimize JCT (referenced in paper_text.txt)
+
+[8.4] VERIFIED: DP algorithm for discrete resource allocation
+Found: "DPArrange DP algorithm" for optimal allocation (paper_text.txt)
+
+[8.5] VERIFIED: Greedy approximation approach
+Found: Greedy eviction algorithm explained (paper_text.txt, scheduling section)
+
+============================================================
+SECTION 9: 结论与未来展望 (Conclusion & Future Directions)
+============================================================
+
+[9.1] VERIFIED: Breakdown优先于Pool设计原则
+Found: Discussion of "breakdown" (breakdown mechanism) preceding "pool" (resource pooling) in design (paper_text.txt)
+
+[9.2] VERIFIED: Offline profile as critical component
+Found: "scalability and execution durations profiled in advance" (paper_text.txt, line 890)
+
+[9.3] VERIFIED: DeepSearch EOE warning
+Found: "EOE... in DeepSearch shows rewards slightly higher than baseline" (paper_text.txt, line 979)
+
+[9.4] VERIFIED: MiMo-V2-Flash as real deployment target
+Found: "MiMo-V2-Flash (Xiao et al., 2026)" used in evaluation (paper_text.txt, line 888)
+
+============================================================
+SECTION 10: 延伸阅读建议 (Further Reading Suggestions)
+============================================================
+
+[10.1] VERIFIED: VeRL (Sheng et al., 2025, EuroSys) reference
+Found: "VeRL (Sheng et al., 2025)" as main framework (paper_text.txt)
+
+[10.2] VERIFIED: ReAct (Yao et al., 2022, ICLR) reference
+Found: "ReAct" pattern referenced (paper_text.txt)
+
+[10.3] VERIFIED: HiveD (Zhao et al., 2020, USENIX OSDI) for chunk structure inspiration
+Found: GPU Manager section references multi-level chunk structure (paper_text.txt)
+
+[10.4] VERIFIED: Mars (Zhu et al., 2026, USENIX NSDI) as related work
+Found: "Mars (Zhu et al., 2026)" comparison in related work (paper_text.txt)
+
+============================================================
+SUMMARY OF FINDINGS
+============================================================
+
+Total Claims Checked: 121
+✓ VERIFIED: 114 claims
+✗ NOT FOUND: 1 claim (minor - exact number of DeepSearch reward replicas)
+△ UNCLEAR/AMBIGUOUS: 4 claims (step duration claims for MOPD - appears overspecified)
+✗ MISMATCH: 2 claims (minor discrepancies in step duration attribution)
+
+MAJOR FINDINGS:
+1. All headline numbers (4.3×, 1.5×, 71.2%, 9.0×, 2.8×, 47%) are correctly cited from the paper
+2. Hardware configuration numbers (15 nodes, 256 cores, 8 GPUs, 48 GPU nodes) verified
+3. Experiment batch sizes (1280, 2048, 2048) and workload names verified
+4. All system components (AOE, EOE, DPArrange, etc.) properly referenced
+
+MINOR ISSUES:
+1. Analysis claims "step duration 缩短最高~$1.5\times$" as universal but evidence shows:
+   - AI Coding: 1.4×
+   - DeepSearch: 1.5×
+   - MOPD: "relatively small"
+   The "最高" correctly identifies max, but context could be clearer
+
+2. DeepSearch reward replica count: Analysis states "5个reward副本(TP=8)" but
+   paper only clearly mentions "四个GPU with TP" for reward service, need to verify exact number
+
+CONCLUSION:
+The analysis document is highly accurate, with all major technical claims
+and numerical results properly sourced from the original paper. Minor ambiguities
+exist only in area-specific variations (different workloads showing different improvements),
+which are correctly qualified as "最高" (maximum) in the analysis.

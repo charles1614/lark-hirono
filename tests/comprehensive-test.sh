@@ -232,6 +232,18 @@ if grep -qF -- '-->' <<<"$OUTPUT_CONTENT"; then echo "  ✅ 18: Arrow --> unesca
 if grep -qF -- 'component-type-id="blk_631fefbbae02400430b8f9f4"' <<<"$OUTPUT_CONTENT"; then echo "  ❌ 18: <add-ons> tag not converted (still present)"; FAIL=$((FAIL+1)); else echo "  ✅ 18: <add-ons> tag replaced (not in output)"; PASS=$((PASS+1)); fi
 
 echo ""
+echo "=== 19. Callout DSL [!callout]...[/callout] Conversion ==="
+# Regression: bracket DSL was not detected by hasOpeningCallout, causing injectOpeningCallout
+# to extract the [!callout...] opening line as the callout description, remove it, and inject
+# a new <callout emoji="bulb"> block — leaving [/callout] and the body stranded before it.
+check_not "19: [!callout bracket NOT in output (converted to XML)" '[!callout'
+check_not "19: [/callout] closing bracket NOT in output" '[/callout]'
+check "19: rocket callout XML present" '<callout emoji="rocket"'
+check "19: rocket callout body preserved" 'DSL callout body text here.'
+check "19: pushpin callout XML present" '<callout emoji="pushpin"'
+check "19: pushpin callout body preserved" 'Second DSL callout'
+
+echo ""
 echo "========================================="
 echo "Results: $PASS passed, $FAIL failed"
 echo "========================================="

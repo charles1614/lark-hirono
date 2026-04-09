@@ -175,7 +175,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
 
   // 2. Normalize (HTML → markdown)
   const { text: normalized, report: normReport } = normalizeMarkdown(src);
-  log(`Normalized: table_sep=${normReport.tableSeparatorFixed}`);
+  log(`Normalized: table_sep=${normReport.tableSeparatorFixed}${normReport.calloutDslConverted > 0 ? `, callout_dsl=${normReport.calloutDslConverted}` : ""}`);
 
   // 3. Analyze document type
   const analysis = analyzeMarkdown(normalized);

@@ -83,11 +83,11 @@ export function tagCodeBlocks(md: string): { text: string; tagged: number } {
   return { text: result, tagged };
 }
 
-/** Check if doc has an opening callout. */
+/** Check if doc has an opening callout (XML <callout> or bracket DSL [!callout]). */
 export function hasOpeningCallout(md: string): boolean {
   const lines = md.split("\n");
   for (let i = 0; i < Math.min(lines.length, 15); i++) {
-    if (/<callout/.test(lines[i])) return true;
+    if (/<callout/.test(lines[i]) || /^\[!callout/.test(lines[i].trim())) return true;
   }
   return false;
 }

@@ -434,6 +434,18 @@ line breaks, mixed bold/italic tags, multi-paragraph cells.
 
 <add-ons component-id="" component-type-id="blk_631fefbbae02400430b8f9f4" record="{"data":"graph TD\n    %% --- Style Definitions ---\n    classDef depth fill:#ffcccc,stroke:#ff0000,stroke-width:2px;\n    classDef perc fill:#cce5ff,stroke:#0066cc,stroke-width:2px;\n    classDef plan fill:#d5fdd5,stroke:#009900,stroke-width:2px;\n    classDef loss fill:#eee,stroke:#999,stroke-width:1px,stroke-dasharray: 3 3;\n    classDef data fill:#fdfdfd,stroke:#999,stroke-dasharray: 5 5;\n    classDef process fill:#fff,stroke:#333;\n\n    %% --- Stage 1: Image Encoder ---\n    subgraph Stage_1_Image_Encoder [Stage 1: Image Encoder]\n        direction TB\n        Img(Input Images) --\u003e Backbone[ResNet Backbone]:::process\n        Backbone --\u003e Neck[FPN Neck]:::process\n        Neck --\u003e FeatMap(Feature Maps I):::data\n        \n        %% [Refinement] Training-only branch: Connected to Loss\n        FeatMap -.-\u003e|Training Input| DepthHead(🔴 Depth Head):::depth\n        DepthHead -.-\u003e|Calculate L1 Loss| LossDepth(Depth Loss / Loss_depth):::loss\n    end\n\n    %% --- Stage 2: Sparse Perception ---\n    subgraph Stage_2_Sparse_Perception [Stage 2: Symmetric Sparse Perception]\n        direction TB\n        InitProbe(K-Means Initial Probes):::data --\u003e LoopStart\n        \n        subgraph Loop [6-Layer Decoder Loop]\n            direction TB\n            LoopStart(Deformable Aggregation):::process\n            LoopStart --\u003e|Extract Features| ProbeFeat(Probe Features):::data\n            ProbeFeat --\u003e PercHead(🔵 Detection \u0026 Mapping Heads):::perc\n            PercHead --\u003e|Regress Offset / Refine Coords| LoopStart\n        end\n        \n        %% Perception Loss (Training)\n        PercHead -.-\u003e|Calculate Cls \u0026 Reg Loss| LossPerc(Perception Loss / Loss_det/map):::loss\n        \n        FeatMap --\u003e LoopStart\n    end\n\n    %% --- Ego Initialization Shortcut ---\n    subgraph Ego_Init [Ego Initialization]\n        FeatMap --\u003e|Front View Min Scale + AvgPool| EgoFeat(Ego Feature):::data\n    end\n\n    %% --- Stage 3: Motion Planner ---\n    subgraph Stage_3_Motion_Planner [Stage 3: Parallel Motion Planner]\n        direction TB\n        PercHead --\u003e|Obstacle / Map Agents| Interaction[Spatio-Temporal Interaction / Attention]:::process\n        EgoFeat --\u003e|Ego Agent| Interaction\n        \n        Interaction --\u003e FinalFeat(Post-Interaction Features):::data\n        \n        FinalFeat --\u003e PredHead(🟢 Motion Prediction Head):::plan\n        FinalFeat --\u003e PlanHead(🟢 Planning Head):::plan\n        \n        %% Planning Loss (Training)\n        PlanHead -.-\u003e|Calculate Planning Loss| LossPlan(Planning Loss / Loss_plan):::loss\n    end\n\n    %% --- Final Output ---\n    PlanHead --\u003e|Final Trajectory| Control(Vehicle Control / Output)\n","theme":"base","view":"chart"}"/>
 
+## 19 Callout DSL Conversion
+
+[!callout emoji="rocket" background-color="light-blue" border-color="light-blue"]
+DSL callout body text here.
+[/callout]
+
+This section tests that bracket-DSL callout syntax converts to XML and content is preserved.
+
+[!callout emoji="pushpin" background-color="light-green" border-color="light-green"]
+Second DSL callout with **bold** and `code` inside.
+[/callout]
+
 ## 15 Verification Targets
 
 - Heading numbering should remain visible.

@@ -14,6 +14,7 @@ export interface NormalizationReport {
   htmlPresent: boolean;
   addOnsMermaidConverted: number;
   mermaidThemeApplied: number;
+  calloutDslConverted: number;
 }
 
 // ─── Add-ons → Mermaid ──────────────────────────────────────────────────────
@@ -334,6 +335,49 @@ export function unescapePipes(md: string): string {
 }
 
 /**
+ * Convert [!callout attrs]...content...[/callout] DSL to <callout attrs>...content...</callout> XML.
+ *
+ * The bracket DSL is an alternative authoring syntax (also appears in some Feishu exports).
+ * Converting it early ensures all downstream steps (hasOpeningCallout, injectOpeningCallout,
+ * convertBlockquotesToCallouts) see a single canonical XML form.
+ */
+export function convertCalloutDslToXml(md: string): { text: string; converted: number } {
+  let converted = 0;
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const match = line.trim().match(/^\[!callout([^\]]*)\]$/);
+
+    if (match) {
+      const attrs = match[1];
+      const contentLines: string[] = [];
+      i++;
+
+      // Collect body lines until [/callout]
+      while (i < lines.length && lines[i].trim() !== "[/callout]") {
+        contentLines.push(lines[i]);
+        i++;
+      }
+
+      out.push(`<callout${attrs}>`);
+      out.push(...contentLines);
+      out.push(`</callout>`);
+      converted++;
+
+      if (i < lines.length) i++; // skip the [/callout] line
+    } else {
+      out.push(line);
+      i++;
+    }
+  }
+
+  return { text: out.join("\n"), converted };
+}
+
+/**
  * Full normalization pipeline.
  */
 export function normalizeMarkdown(mdText: string): { text: string; report: NormalizationReport } {
@@ -343,14 +387,20 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
     htmlPresent: false,
     addOnsMermaidConverted: 0,
     mermaidThemeApplied: 0,
+    calloutDslConverted: 0,
   };
 
-  // 0. Convert <add-ons> mermaid blocks → ```mermaid fences (must run before HTML stripping)
+  // 0. Convert [!callout...]...[/callout] DSL → <callout>...</callout> XML
+  const calloutDsl = convertCalloutDslToXml(mdText);
+  mdText = calloutDsl.text;
+  report.calloutDslConverted = calloutDsl.converted;
+
+  // 0.1 Convert <add-ons> mermaid blocks → ```mermaid fences (must run before HTML stripping)
   const addOns = convertAddOnsToMermaid(mdText);
   mdText = addOns.text;
   report.addOnsMermaidConverted = addOns.converted;
 
-  // 0.5 Apply Mermaid theming to any explicit mermaid fences in the document.
+  // 0.2 Apply Mermaid theming to any explicit mermaid fences in the document.
   const mermaidTheme = themeMermaidFences(mdText);
   mdText = mermaidTheme.text;
   report.mermaidThemeApplied = mermaidTheme.themed;

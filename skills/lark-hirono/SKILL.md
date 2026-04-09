@@ -18,6 +18,7 @@ Upload markdown as styled Feishu documents, optimize existing pages, fetch/analy
 This skill's supporting files are located relative to this SKILL.md:
 
 - `references/optimization-guide.md` — Quality standards and reference patterns for document transformation
+- `references/mermaid-guide.md` — When and how to generate mermaid diagrams; examples for common patterns
 
 ## Running the CLI
 
@@ -241,6 +242,42 @@ Review the source document for issues that should be fixed regardless of format:
 - **Technical opinions**: If they recommend a tool or approach, keep it
 - **Original structure**: Only adjust structure if it clearly conflicts with the reference format
 - **Level of detail**: If the author was brief on a topic, they may have had a reason
+
+### Task 4.5: Mermaid Diagram (Best-Effort)
+
+Read [`references/mermaid-guide.md`](<skill-directory>/references/mermaid-guide.md) for patterns, rules, and examples.
+
+**Decision**: does this document benefit from a diagram?
+
+- **Yes** → generate one mermaid block, place it immediately after the opening callout (before the first heading)
+- **No** → skip silently, do not mention it to the user
+
+The pipeline handles all visual styling automatically (subgraph colors, endpoint fills, edge label backgrounds). You only write the structure.
+
+**Quick fit test** — generate a diagram if the document describes:
+- A multi-stage pipeline or workflow
+- A system architecture with components and data flow
+- An algorithm with branching decisions
+- A process with clear start → steps → end
+
+**Skip if** the document is a reference table, FAQ, catalog, or has no flow structure. When in doubt, skip — a bad diagram is worse than no diagram.
+
+**Format:**
+
+````markdown
+<callout ...>
+...
+</callout>
+
+```mermaid
+graph TD
+    ...
+```
+
+## 1 First Section
+````
+
+---
 
 ### Task 5: Generate Optimized Version
 
@@ -494,3 +531,4 @@ lark-hirono optimize --doc CcKqdWjF2o2UzixXZDecXxvInyc --input local.md
 ## Supporting Files
 
 - `references/optimization-guide.md` — Quality standards and reference patterns
+- `references/mermaid-guide.md` — Mermaid diagram patterns and examples

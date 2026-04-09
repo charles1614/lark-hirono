@@ -29,14 +29,9 @@ Determine the correct invocation **once** at the start of each session, trying e
    command -v lark-hirono
    ```
    If found, use `lark-hirono <action> [options]` for all commands.
+   If not found, install with `npm install -g lark-hirono`; and update to latest via `npm update -g lark-hirono`
 
-2. **npx (no install needed)** — if not found globally, run via npx:
-   ```bash
-   npx lark-hirono <action> [options]
-   ```
-   npx will download and cache the package automatically.
-
-3. **Local dev repo** — only if working inside a cloned `lark-hirono` repo (the directory containing `package.json` with `"name": "lark-hirono"`), ensure deps are installed (`npm install`) and run:
+2. **Local dev repo** — only if working inside a cloned `lark-hirono` repo (the directory containing `package.json` with `"name": "lark-hirono"`), ensure deps are installed (`npm install`) and run:
    ```bash
    npx tsx bin/lark-hirono.ts <action> [options]
    ```

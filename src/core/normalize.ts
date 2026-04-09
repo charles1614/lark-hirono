@@ -352,22 +352,28 @@ export function convertCalloutDslToXml(md: string): { text: string; converted: n
     const match = line.trim().match(/^\[!callout([^\]]*)\]$/);
 
     if (match) {
-      const attrs = match[1];
-      const contentLines: string[] = [];
-      i++;
-
-      // Collect body lines until [/callout]
-      while (i < lines.length && lines[i].trim() !== "[/callout]") {
-        contentLines.push(lines[i]);
-        i++;
+      // Lookahead: verify a standalone [/callout] line exists before the next [!callout or EOF.
+      // Without this, an orphaned [!callout] tag (e.g. inside a corrupted <callout> XML block)
+      // would consume the entire rest of the document as callout body.
+      let closingIdx = -1;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() === "[/callout]") { closingIdx = j; break; }
+        if (lines[j].trim().match(/^\[!callout/)) break; // next DSL tag — this one is unclosed
       }
 
-      out.push(`<callout${attrs}>`);
-      out.push(...contentLines);
-      out.push(`</callout>`);
-      converted++;
-
-      if (i < lines.length) i++; // skip the [/callout] line
+      if (closingIdx === -1) {
+        // Malformed / orphaned opening tag — pass through unchanged
+        out.push(line);
+        i++;
+      } else {
+        const attrs = match[1];
+        const contentLines = lines.slice(i + 1, closingIdx);
+        out.push(`<callout${attrs}>`);
+        out.push(...contentLines);
+        out.push(`</callout>`);
+        converted++;
+        i = closingIdx + 1; // skip past [/callout]
+      }
     } else {
       out.push(line);
       i++;

@@ -11,6 +11,8 @@ Markdown → Styled Feishu (Lark) documents with heading numbering, table conver
 - **Table conversion** — Markdown tables → `<lark-table>` XML with proportional widths
 - **Keyword highlighting** — LLM-assisted `{red:keyword}` for table titles
 - **Narrative optimizations** — Callout injection, code block tagging, signpost bolding
+- **Callout DSL** — `[!callout ...]...[/callout]` bracket syntax auto-converted to `<callout>` XML
+- **Mermaid diagrams** — `<add-ons>` whiteboard blocks ↔ ` ```mermaid ``` ` fences; auto-theming + whiteboard patching
 - **Chunked upload** — Large docs (>200KB) split automatically
 - **Verify** — Block-level structure validation
 
@@ -130,15 +132,15 @@ lark-hirono verify --doc GzlQwunV9iQAqmkQqOBcZzugnjf
 
 ```
 Upload:   Read → Normalize → Analyze → Preprocess → Split → Highlight
-          → LarkTable → Upload → Patch → Verify
+          → LarkTable → Upload → Patch → Whiteboard → Verify
 
 Optimize: Fetch → Normalize → Analyze → Narrative → Preprocess → Split
-          → LarkTable → Create → Patch → Verify
+          → LarkTable → Create → Patch → Whiteboard → Verify
 ```
 
 ### Key Steps
 
-1. **Normalize** — HTML (`<p>`, `<ul>`, `<li>`, `<strong>`, `<a>`) → clean Markdown
+1. **Normalize** — `[!callout]` DSL → `<callout>` XML; `<add-ons>` mermaid → fences; mermaid theming; HTML (`<p>`, `<ul>`, `<li>`, `<strong>`, `<a>`) → clean Markdown
 2. **Analyze** — Classify document type based on table count and heading density
 3. **Narrative** — For narrative docs: callout injection, code block tagging, signpost bolding
 4. **Preprocess** — Heading numbering, strip title, blue prefix + rainbow backgrounds
@@ -147,13 +149,14 @@ Optimize: Fetch → Normalize → Analyze → Narrative → Preprocess → Split
 7. **LarkTable** — Markdown tables → `<lark-table>` XML
 8. **Upload/Create** — Chunked doc creation via `lark-cli`
 9. **Patch** — Block-level PATCH for heading backgrounds
-10. **Verify** — Structure validation (block-level, not markdown export)
+10. **Whiteboard patch** — Color-patch mermaid edge label backgrounds in whiteboard blocks
+11. **Verify** — Structure validation (block-level, not markdown export)
 
 ## Narrative Optimizations
 
 For `documentType === "narrative"` (≥3 headings, no tables):
 
-- **Opening callout** — Inject `[!callout icon=bulb]` with first paragraph as description
+- **Opening callout** — Inject `<callout emoji="bulb">` XML with first paragraph as description (skipped if already present, including `[!callout]` DSL form)
 - **Code block tagging** — Detect `bash`, `nginx`, `yaml`, `python` from content patterns
 - **Blockquote conversion** — TL;DR and summary phrases → callout format
 - **Signpost bolding** — Emphasize transition phrases (`具体来说`, `值得注意的是`)
@@ -177,7 +180,7 @@ Priority: CLI flags → config file → built-in defaults.
 ## Tests
 
 ```bash
-npm test  # 92 checks, all local file-based
+npm test  # 116 checks, all local file-based
 ```
 
 ## Architecture
@@ -206,6 +209,8 @@ src/
 │   └── highlight.ts     # Keyword highlighting
 ├── patch/
 │   └── patch.ts         # Heading background PATCH
+├── whiteboard/
+│   └── mermaid-patch.ts # Mermaid whiteboard color patching
 ├── image/
 │   └── images.ts        # Image upload
 └── verify/

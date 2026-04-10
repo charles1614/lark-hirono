@@ -380,22 +380,24 @@ Verify that the optimized document will not have visual regressions:
 
 ### Task 6: Write to Feishu
 
-Write the optimized content to a temp file, then upload:
+**If the source was a local file** (e.g., `report.md`): write the optimized content to `report_upload.md` (same directory, `_upload` suffix). Never modify the original file. Never use a `/tmp/` path.
+
+**If the source was fetched from Feishu**: write to any convenient temp file (e.g., `<title>_upload.md` in current directory).
 
 ```bash
-# Step 1: Write optimized content to temp file
-UPLOAD_TMP=$(mktemp /tmp/lark_hirono_upload_XXXXXX.md)
-cat > "$UPLOAD_TMP" << 'OPTIMIZED_CONTENT_END'
+# Step 1: Write optimized content to upload file
+# For local source report.md → use report_upload.md
+cat > report_upload.md << 'OPTIMIZED_CONTENT_END'
 [optimized markdown content here]
 OPTIMIZED_CONTENT_END
 
-# Step 2: Upload from file
-lark-hirono upload "$UPLOAD_TMP" \
-  --title "Optimized: [Original Title]" \
-  --wiki-node <reference-doc-parent-node-id>
+# Step 2: Upload (update in place or create new)
+# To update existing doc:
+lark-hirono optimize --doc <doc-id> --input report_upload.md
 
-# Step 3: Clean up
-rm -f "$UPLOAD_TMP"
+# To create new sibling:
+lark-hirono optimize --doc <doc-id> --input report_upload.md --new \
+  --title "Optimized: [Original Title]"
 ```
 
 **Report to user:**

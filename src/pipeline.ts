@@ -306,11 +306,14 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   const mermaidBlocks = extractMermaidBlocks(md);
   if (mermaidBlocks.length > 0) log(`Mermaid blocks: ${mermaidBlocks.length}`);
 
-  // Determine image directory for local images
+  // Determine image directory for local images.
+  // Only pass imageDir to lark-cli if there are actual local image refs —
+  // lark-cli versions that don't support --image-dir will error otherwise.
   const imageRefs = extractImageRefs(md);
   const hasLocalImages = imageRefs.some(r => !r.url.startsWith("http"));
-  const effectiveImageDir = args.imageDir
-    ?? (hasLocalImages && args.input ? dirname(resolve(args.input)) : null);
+  const effectiveImageDir = hasLocalImages
+    ? (args.imageDir ?? (args.input ? dirname(resolve(args.input)) : null))
+    : null;
   if (effectiveImageDir) log(`Image dir: ${effectiveImageDir}`);
 
   // --new always creates a new doc, never overwrites

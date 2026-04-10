@@ -325,6 +325,15 @@ The optimized document should be **80%+ identical** to the original. Changes sho
 6. **Fix factual errors** — Correct typos, broken links, wrong information
 7. **Preserve images and embedded content** — If the source document contains `<image token="...">` tags (Feishu-hosted images), copy them verbatim into the optimized version at their original position. Do NOT drop or replace them with placeholder text. Losing images is a content regression.
 8. **Preserve existing tables** — If the source has a `<lark-table>` block, copy it through unchanged (or restructure it in plain markdown if restructuring is needed). Do NOT emit `|lark-table rows="N" ...|` (pipe-wrapped lark-table tag) — that is not valid syntax. Write either valid `<lark-table>` XML or a standard markdown table.
+9. **Preserve `<equation>` tags verbatim** — If the source contains `<equation>...</equation>` blocks, copy the ENTIRE tag (including all LaTeX content) verbatim. Do NOT:
+   - Rewrite `<equation>` as `$...$` notation
+   - Split the formula between `<equation>` tags and surrounding plain text
+   - Write LaTeX subscripts (`_{\text{...}}`) OUTSIDE of `$...$` or `<equation>` delimiters — bare `_` in markdown becomes italic (`*`) and breaks rendering
+   - Use markdown `_italic_` for LaTeX subscripts; always wrap complete formulas in `$...$` or `<equation>`
+
+   **Multi-subscript limitation (lark-cli bug)**: Formulas with two or more `_{...}` subscripts break because lark-cli processes `_` as markdown italic INSIDE `<equation>`. If a formula has 2+ subscripts that use `_{...}` (brace follows `_`), use single-char subscripts without braces instead: `_p`, `_h`, `_e` etc. Single `_` per formula using `_{\text{...}}` is safe.
+
+   **Pattern that MUST be preserved exactly**: if source has `<equation>\text{Formula}_{\text{active}} = \frac{...}{...} \times 100\%</equation>` (single subscript), output it unchanged. For multi-subscript formulas, simplify subscript notation.
 
 #### What NOT to change:
 
@@ -345,6 +354,8 @@ Compare the optimized version against the source:
 - [ ] All tables present (no data lost)
 - [ ] All links preserved (no links removed)
 - [ ] Technical details intact (numbers, formulas, commands)
+- [ ] All `<image token="...">` tags present (count source vs output — zero missing)
+- [ ] All `<equation>` blocks present and unchanged (do not rewrite or split formulas)
 
 **If content is missing**: Add it back. The optimized version must have 100% of the original content.
 

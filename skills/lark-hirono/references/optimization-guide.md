@@ -133,6 +133,25 @@ The pipeline (3-pass color conversion) handles this automatically, but preventio
 
 **Why**: `**text **<equation>` — the second `**` before `<equation>` closes the bold span early, leaving the equation unbolded. Keep `**` markers away from `$formula$` boundaries.
 
+### LaTeX Subscripts Outside Equation Delimiters
+
+❌ `\text{SM Throughput}_{\%} = \frac{...}{\text{Peak}_{\text{Hardware}}} \times 100\%` (bare LaTeX)  
+✅ `$\text{SM Throughput}_p = \frac{...}{\text{Peak}_h} \times 100\%$`  
+✅ `<equation>\text{SM Throughput}_p = \frac{...}{\text{Peak}_h} \times 100\%</equation>`
+
+**Why**: `_` in bare LaTeX text (outside `$...$` or `<equation>`) is treated as markdown italic. `_{\%}` starts italic; the next `_` closes it, splitting the formula into `*{\%} = ...*` (italic) + misplaced `<equation>`. Always wrap complete formulas.
+
+**Multi-subscript equations**: lark-cli 1.0.6 processes markdown `_` italic INSIDE `<equation>` content. Formulas with two or more `_{...}` subscripts (where `{` follows `_`) will break because the first `_` and second `_` pair as italic delimiters.
+
+**Workaround**: Use single-character alphabetic subscripts WITHOUT braces: `_p`, `_h`, `_e`, `_w` etc. When `_` is followed by an alphabetic character (not `{`), it cannot act as a right-flanking delimiter and cannot close italic. One subscript per formula can use `_{\text{...}}` safely (no pairing partner).
+
+| ❌ Two subscripts with `{` | ✅ Single-char subscripts |
+|--------------------------|--------------------------|
+| `\text{SM}_{pct} = \frac{...}{\text{Peak}_{hw}}` | `\text{SM}_p = \frac{...}{\text{Peak}_h}` |
+| `\text{Util}_{\text{elapsed}}..._{\text{Wall}}` | `\text{Util}_e..._w` |
+
+**Preserve existing `<equation>` tags**: If source has `<equation>...</equation>`, copy verbatim — do NOT rewrite as `$...$`. Rewriting risks splitting the formula.
+
 ### `>` at Start of Table Cell
 
 ❌ `| Description | > This is a note |`  

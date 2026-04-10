@@ -100,6 +100,53 @@ Note: `> 📌 **Key**: ...` markdown blockquotes inside a `<callout>` are NOT th
 
 **No special handling needed** — do not strip color tags or downgrade them to plain text. All three forms survive the upload pipeline.
 
+---
+
+## Rendering Pitfalls
+
+These patterns cause broken rendering. Always use the correct form.
+
+### Bold + Color Tag
+
+| ❌ Wrong | ✅ Correct |
+|----------|-----------|
+| `**{red:conclusion}**` | `{red:**conclusion**}` |
+| `**{green:term}**` | `{green:**term**}` |
+
+**Why**: `**{color:text}**` converts to `**<text color>text</text>**` — lark-cli can't bold-wrap an XML span and fragments it into multiple `<text>` elements. Bold must go INSIDE the color tag.
+
+The pipeline (3-pass color conversion) handles this automatically, but prevention is more reliable.
+
+### Formulas in Headings
+
+❌ `## 3.1 Throughput $\text{SM}_{peak}$ Analysis`  
+✅ `## 3.1 Throughput SM-peak Analysis`
+
+**Why**: lark-cli does not render `<equation>` inside headings. The pipeline strips equations from headings and unwraps to raw LaTeX text, but plain text is better — write prose descriptions instead of formulas in titles.
+
+### Bold Wrapping Equation
+
+| ❌ Wrong | ✅ Correct |
+|----------|-----------|
+| `**text $formula$ more**` | `**text** $formula$ **more**` |
+| `**输入梯度 **$\nabla X$` | `**输入梯度** $\nabla X$` |
+
+**Why**: `**text **<equation>` — the second `**` before `<equation>` closes the bold span early, leaving the equation unbolded. Keep `**` markers away from `$formula$` boundaries.
+
+### `>` at Start of Table Cell
+
+❌ `| Description | > This is a note |`  
+✅ `| Description | This is a note |`  
+✅ `| Description | → This is a note |`
+
+**Why**: A line starting with `>` inside a table cell may be interpreted as a markdown blockquote by lark-cli. The pipeline escapes leading `>` automatically, but using `→` or prose is cleaner.
+
+### Nested Color Tags
+
+✅ Supported: `{green:text {red:number}}` — the pipeline uses a 3-pass conversion that resolves inner tags first.
+
+❌ Avoid deep nesting (3+ levels) — unnecessary and unreliable.
+
 ### Chinese Ordinals Not Converted
 
 **Problem:** `## **一、端口规划**` remains unchanged

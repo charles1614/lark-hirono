@@ -309,6 +309,9 @@ The optimized document should be **80%+ identical** to the original. Changes sho
      - Inline code: `` {green:`code`} `` → renders green code
    - Raw `<text color="green">Certbot</text>` from fetched documents is also valid and passes through upload unchanged — do not strip it.
    - **Preserve all existing emphasis**: Every `{red:...}`, `{green:...}`, and `**bold**` in the source document MUST be carried over to the optimized version. Add new emphasis on top; never remove original emphasis.
+   - **CRITICAL — bold placement**: Write `{red:**bold conclusion**}` (bold INSIDE), NEVER `**{red:conclusion}**` (bold OUTSIDE). Bold outside a color tag causes lark-cli to fragment the text into multiple spans.
+   - **CRITICAL — formulas in headings**: Never put `$formula$` in a heading title — lark-cli does not render equations in headings. Use a plain text description instead.
+   - **CRITICAL — bold near equations**: Do not wrap `**` directly around `$formula$` boundaries. Write `**text** $formula$`, not `**text $formula$**`.
 
 4. **Add in-line callouts** — Insert markdown blockquotes for key insights throughout the document body:
    - Use `> 📌 **标题**: ...` for key insights

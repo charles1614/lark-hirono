@@ -209,6 +209,18 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     log(`LaTeX: ${latex.inline} inline, ${latex.display} display → <equation> tags`);
   }
 
+  // 3a. Strip <equation> from headings — lark-cli does not render equations in headings.
+  //     Unwrap to raw LaTeX text, which is better than a broken heading.
+  narrativeMd = narrativeMd.replace(/^(#{1,6}\s+.*)$/gm, (line) =>
+    line.replace(/<equation>([\s\S]*?)<\/equation>/g, (_, content) => content.trim())
+  );
+
+  // 3b. Remove stray ** immediately adjacent to <equation> tags.
+  //     Pattern: "**text **<equation>" — the ** before <equation> closes bold early.
+  narrativeMd = narrativeMd
+    .replace(/\*{1,3}\s*(<equation>)/g, " $1")
+    .replace(/(<\/equation>)\s*\*{1,3}/g, "$1 ");
+
   // 4. Lint
   const warnings = lintMarkdown(narrativeMd);
   if (warnings.length > 0 && args.verbose) {
@@ -251,11 +263,22 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   }
 
   // Convert {color:content} → <text color="color">content</text>
-  // Handles {red:**bold**}, {green:`code`}, {red:plain}, etc.
-  // This runs regardless of --no-highlight so fixture tags always render.
+  // 3-pass loop handles:
+  //   - Nested tags: {green:text {red:32}} → inner resolved first, outer second
+  //   - Bold outside color: **{color:text}** → moved inside → {color:**text**}
   // Skip code fences to avoid corrupting mermaid %%{init:...}%% directives.
+  const colorConvert = (block: string): string => {
+    for (let pass = 0; pass < 3; pass++) {
+      // Move bold markers outside color tags to inside: **{color:content}** → {color:**content**}
+      block = block.replace(/(\*{1,3})\{(\w+):([^{}]*)\}(\1)/g,
+        (_, stars, color, content) => `{${color}:${stars}${content}${stars}}`);
+      // Convert innermost color tags only (content must not contain { or })
+      block = block.replace(/\{(\w+):([^{}]+)\}/g, '<text color="$1">$2</text>');
+    }
+    return block;
+  };
   md = md.split(/(```[\s\S]*?```)/g).map((block) =>
-    block.startsWith("```") ? block : block.replace(/\{(\w+):([^}]+)\}/g, '<text color="$1">$2</text>')
+    block.startsWith("```") ? block : colorConvert(block)
   ).join("");
   const redCount = (md.match(/<text color="red">/g) || []).length;
   if (redCount > 0) log(`Red highlights: ${redCount}`);

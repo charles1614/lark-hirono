@@ -231,8 +231,10 @@ export function convertToLarkTables(md: string): string {
           } else {
             result.push("    <lark-td>");
             for (const pl of processedLines) {
+              // Escape leading > to prevent lark-cli from treating cell content as blockquote
+              const escaped = pl.trimStart().startsWith(">") ? "\\" + pl.trimStart() : pl;
               // Preserve paragraph breaks: keep empty lines
-              result.push(`      ${pl}`);
+              result.push(`      ${escaped}`);
             }
             result.push("    </lark-td>");
           }

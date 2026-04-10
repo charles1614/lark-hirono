@@ -1,27 +1,49 @@
 /**
- * LaTeX → Feishu equation tag conversion.
+ * LaTeX delimiter normalization for Feishu upload.
  *
- * Converts $...$  → <equation>...</equation>  (inline)
- * Converts $$...$$ → <equation>...</equation>  (display, own line)
- * Converts \[...\] → <equation>...</equation>  (display, Kimi/standard LaTeX)
- * Converts \(...\) → <equation>...</equation>  (inline, Kimi/standard LaTeX)
+ * lark-cli's markdown parser applies italic parsing to _ inside math delimiters
+ * ($, $$, <equation>), breaking multi-subscript formulas.
  *
- * lark-cli docs +create accepts <equation> XML tags and renders them
- * as native Feishu equation blocks / inline equations.
+ * Fix: insert \mkern0mu between } and _ to break the italic trigger.
+ * \mkern0mu is a zero-width TeX kern (renders as nothing) — it ends with the
+ * letter 'u', which is a word character. Markdown italic openers require the _
+ * to be preceded by a non-word char; inserting \mkern0mu ensures _ is preceded
+ * by 'u' instead of '}', making it invisible to the italic parser.
+ *
+ * Strategy:
+ *   \[...\]  →  $\mkern0mu-protected content$  (display → inline)
+ *   \(...\)  →  $\mkern0mu-protected content$  (inline)
+ *   $$\n...\n$$  →  $\mkern0mu-protected content$  (collapse multi-line)
+ *   $...$    →  $\mkern0mu-protected content$  (protect pass-through)
+ *   $$...$$ →  $$\mkern0mu-protected content$$  (protect pass-through)
  */
 
 // ─── Core ──────────────────────────────────────────────────────────────
 
 /**
- * Convert LaTeX math delimiters to <equation>...</equation> tags.
+ * Insert \mkern0mu between } and _ to prevent lark-cli markdown italic parsing.
  *
- * Handles:
- *   - $$...$$ and $...$  (standard markdown math)
- *   - \[...\]            (display math — used by Kimi, GPT, etc.)
- *   - \(...\)            (inline math — used by Kimi, GPT, etc.)
+ * lark-cli treats _..._ as italic when _ is preceded by a non-word char like }.
+ * \mkern0mu is a zero-width kern whose last character is 'u' (word char),
+ * so _{\text{...}} after a closing } becomes }\mkern0mu_{\text{...}},
+ * which lark-cli's italic parser no longer triggers on.
+ *
+ * Rendering: \mkern0mu inserts exactly 0 math units of space — visually identical
+ * to the original formula in KaTeX/Feishu.
+ */
+function protectSubscripts(content: string): string {
+  // Insert \mkern0mu between } and _ (subscript after closing brace)
+  return content.replace(/\}(?=_)/g, "}\\mkern0mu");
+}
+
+/**
+ * Normalize LaTeX math delimiters for lark-cli.
+ *
+ * Converts \[...\] and \(...\) to $...$ with protected subscripts.
+ * Collapses multi-line $$...$$ to single-line with protected subscripts.
+ * Also protects existing $...$ and $$...$$ pass-through content.
  *
  * Skips code fences (``` blocks) and inline code (`...`).
- * Handles both single-line and multi-line display math.
  */
 export function convertLatexToEquationTags(md: string): { text: string; inline: number; display: number } {
   let inline = 0;
@@ -39,7 +61,7 @@ export function convertLatexToEquationTags(md: string): { text: string; inline: 
       const trimmed = content.trim();
       if (!/[\\^_{}=]/.test(trimmed)) return _match;
       display++;
-      return `<equation>${trimmed}</equation>`;
+      return `$${protectSubscripts(trimmed)}$`;
     });
 
     // Phase 2: \(...\) inline math
@@ -49,42 +71,23 @@ export function convertLatexToEquationTags(md: string): { text: string; inline: 
       const trimmed = content.trim();
       if (!/[\\^_{}=]/.test(trimmed)) return _match;
       inline++;
-      return `<equation>${trimmed}</equation>`;
+      return `$${protectSubscripts(trimmed)}$`;
     });
 
-    // Phase 3: Multi-line display math  $$\n...\n$$
+    // Phase 3: Collapse multi-line display math $$\n...\n$$ to single-line.
     part = part.replace(/\$\$\s*\n([\s\S]*?)\n\s*\$\$/g, (_match, content: string) => {
       display++;
-      return `<equation>${content.trim()}</equation>`;
+      return `$${protectSubscripts(content.trim())}$`;
     });
 
-    // Phase 4: Single-line display math  $$...$$
-    part = part.replace(/\$\$([^$]+?)\$\$/g, (_match, content: string) => {
-      display++;
-      return `<equation>${content.trim()}</equation>`;
+    // Phase 4: Protect existing $...$ and $$...$$ pass-through content.
+    // Apply \mkern0mu protection so user-written formulas don't break italic parsing.
+    part = part.replace(/\$\$([^$\n]+)\$\$/g, (_, content: string) => {
+      return `$$${protectSubscripts(content)}$$`;
     });
-
-    // Phase 5: Inline math  $...$
-    // Protect inline code spans first
-    const codeSpans: string[] = [];
-    part = part.replace(/`[^`]+`/g, (m) => {
-      codeSpans.push(m);
-      return `\x00ICODE${codeSpans.length - 1}\x00`;
+    part = part.replace(/(?<!\$)\$(?!\$)([^\n$]+)\$(?!\$)/g, (_, content: string) => {
+      return `$${protectSubscripts(content)}$`;
     });
-
-    // Match inline $...$ but not:
-    // - Empty: $$
-    // - Currency-like: $100 (digit right after opening $, no LaTeX commands)
-    // - Already converted: <equation>
-    part = part.replace(/(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g, (_match, content: string) => {
-      // Skip currency patterns: starts with digit and has no LaTeX operators
-      if (/^\d/.test(content) && !/[\\^_{}]/.test(content)) return _match;
-      inline++;
-      return `<equation>${content}</equation>`;
-    });
-
-    // Restore inline code
-    part = part.replace(/\x00ICODE(\d+)\x00/g, (_, i) => codeSpans[parseInt(i)]);
 
     return part;
   });

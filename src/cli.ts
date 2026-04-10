@@ -296,10 +296,11 @@ export class LarkCli {
   patchBlock(
     docId: string,
     blockId: string,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
+    timeout = 60_000
   ): boolean {
     const path = `/open-apis/docx/v1/documents/${docId}/blocks/${blockId}?document_revision_id=-1`;
-    const result = this.patch(path, payload);
+    const result = this.run(["api", "PATCH", path, "--data", JSON.stringify(payload)], timeout);
     return result !== null && result.code === 0;
   }
 

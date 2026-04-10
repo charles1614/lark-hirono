@@ -202,24 +202,33 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     if (result.stats.separatorsAdded > 0) log(`Narrative: ${result.stats.separatorsAdded} section separators added`);
   }
 
-  // 3. LaTeX → <equation> tags (before preprocess to avoid mangling)
+  // 3. Normalize LaTeX delimiters (\[...\] → $, \(...\) → $, multi-line $$ → $).
+  //    All math content gets \mkern0mu inserted between } and _ to prevent lark-cli
+  //    from treating _..._ as italic when _ is preceded by a closing brace.
   const latex = convertLatexToEquationTags(narrativeMd);
   narrativeMd = latex.text;
   if (latex.inline + latex.display > 0) {
-    log(`LaTeX: ${latex.inline} inline, ${latex.display} display → <equation> tags`);
+    log(`LaTeX: ${latex.inline} inline, ${latex.display} display → normalized`);
   }
 
-  // 3a. Strip <equation> from headings — lark-cli does not render equations in headings.
+  // 3a. Strip equations from headings — lark-cli does not render equations in headings.
   //     Unwrap to raw LaTeX text, which is better than a broken heading.
+  //     Handle both $...$ / $$...$$ and <equation>...</equation> (inline, not multi-line).
   narrativeMd = narrativeMd.replace(/^(#{1,6}\s+.*)$/gm, (line) =>
-    line.replace(/<equation>([\s\S]*?)<\/equation>/g, (_, content) => content.trim())
+    line
+      .replace(/\$\$([^$]+?)\$\$/g, (_, content) => content.trim())
+      .replace(/(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g, (_, content) => content.trim())
+      .replace(/<equation>([^<]*?)<\/equation>/g, (_, content) => content.trim())
   );
 
-  // 3b. Remove stray ** immediately adjacent to <equation> tags.
-  //     Pattern: "**text **<equation>" — the ** before <equation> closes bold early.
+  // 3b. Remove stray ** immediately adjacent to equation delimiters.
   narrativeMd = narrativeMd
     .replace(/\*{1,3}\s*(<equation>)/g, " $1")
-    .replace(/(<\/equation>)\s*\*{1,3}/g, "$1 ");
+    .replace(/(<\/equation>)\s*\*{1,3}/g, "$1 ")
+    .replace(/\*{1,3}\s*(\$\$)/g, " $1")
+    .replace(/(\$\$)\s*\*{1,3}/g, "$1 ")
+    .replace(/\*{1,3}\s*(\$[^$])/g, " $1")
+    .replace(/([^$]\$)\s*\*{1,3}/g, "$1 ");
 
   // 4. Lint
   const warnings = lintMarkdown(narrativeMd);

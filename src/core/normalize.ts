@@ -472,17 +472,16 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   //   Strip these lines to prevent them appearing as garbage in the output.
   result = result.replace(/^\|lark-t(?:able|r|d)[^|]*\|\s*$/gm, "");
 
-  // 4b-eq. Collapse multi-line <equation> blocks to single line.
-  //   When fetched from Feishu, lark-cli may render equation blocks as:
-  //     - <equation>formula content
-  //     </equation>
-  //   The closing tag on a separate unindented line means lark-cli won't
-  //   recognize it as a list-item continuation, so the equation tag
-  //   becomes unclosed and _subscripts_ render as markdown italic.
-  //   Normalize all <equation>...</equation> to single-line form.
-  result = result.replace(/<equation>([\s\S]*?)<\/equation>/g, (_, content) =>
-    `<equation>${content.replace(/\n/g, " ").trim()}</equation>`
-  );
+  // 4b-eq. Convert <equation> blocks (from fetched Feishu docs) to $...$ format.
+  //   Insert \mkern0mu between } and _ to prevent lark-cli from treating _..._ as
+  //   italic when re-uploading fetched content. \mkern0mu is a zero-width kern whose
+  //   last character is 'u' (word char), breaking the italic trigger on }_.
+  result = result.replace(/<equation>([\s\S]*?)<\/equation>/g, (_, content) => {
+    const trimmed = content.replace(/\n/g, " ").trim();
+    // Insert \mkern0mu between } and _ to prevent italic pairing
+    const protected_ = trimmed.replace(/\}(?=_)/g, "}\\mkern0mu");
+    return `$${protected_}$`;
+  });
 
   // 4c. Add blank lines between consecutive non-blank, non-special lines
   //     to preserve paragraph breaks in Feishu

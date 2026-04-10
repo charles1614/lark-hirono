@@ -291,8 +291,8 @@ export function autoHighlightMetrics(md: string): { text: string; count: number 
         return `{red:${match}}`;
       });
 
-      // Highlight LaTeX multipliers: $4.3\times$ (already converted to <equation>)
-      line = line.replace(/(?<!\{red:)(<equation>\d+\.?\d*\\times<\/equation>)/g, (match) => {
+      // Highlight LaTeX multipliers: $4.3\times$ or $$4.3\times$$
+      line = line.replace(/(?<!\{red:)(\$\$?\d+\.?\d*\\times\$\$?)/g, (match) => {
         count++;
         return `{red:${match}}`;
       });

@@ -465,6 +465,18 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   //     <p>/<\/p> are preserved inside table cells — lark-table.ts handles them.
   result = result.replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
 
+  // 4b-eq. Collapse multi-line <equation> blocks to single line.
+  //   When fetched from Feishu, lark-cli may render equation blocks as:
+  //     - <equation>formula content
+  //     </equation>
+  //   The closing tag on a separate unindented line means lark-cli won't
+  //   recognize it as a list-item continuation, so the equation tag
+  //   becomes unclosed and _subscripts_ render as markdown italic.
+  //   Normalize all <equation>...</equation> to single-line form.
+  result = result.replace(/<equation>([\s\S]*?)<\/equation>/g, (_, content) =>
+    `<equation>${content.replace(/\n/g, " ").trim()}</equation>`
+  );
+
   // 4c. Add blank lines between consecutive non-blank, non-special lines
   //     to preserve paragraph breaks in Feishu
   const normalLines = result.split("\n");

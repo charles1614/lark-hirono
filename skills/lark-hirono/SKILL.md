@@ -323,6 +323,8 @@ The optimized document should be **80%+ identical** to the original. Changes sho
 
 5. **Fix code blocks** — Add language tags if missing. Note: for narrative docs, the pipeline auto-tags common languages (python, bash, nginx, yaml, json, go, typescript, etc.) — you only need to add tags for languages the pipeline doesn't recognize.
 6. **Fix factual errors** — Correct typos, broken links, wrong information
+7. **Preserve images and embedded content** — If the source document contains `<image token="...">` tags (Feishu-hosted images), copy them verbatim into the optimized version at their original position. Do NOT drop or replace them with placeholder text. Losing images is a content regression.
+8. **Preserve existing tables** — If the source has a `<lark-table>` block, copy it through unchanged (or restructure it in plain markdown if restructuring is needed). Do NOT emit `|lark-table rows="N" ...|` (pipe-wrapped lark-table tag) — that is not valid syntax. Write either valid `<lark-table>` XML or a standard markdown table.
 
 #### What NOT to change:
 

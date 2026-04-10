@@ -465,6 +465,13 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
   //     <p>/<\/p> are preserved inside table cells — lark-table.ts handles them.
   result = result.replace(/<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
 
+  // 4b-lark. Remove stray |lark-table ...|  artifact lines.
+  //   When an LLM reproduces a fetched <lark-table> block it sometimes emits
+  //   the opening tag wrapped in pipes:  |lark-table rows="9" cols="4" ...|
+  //   This is not a valid markdown table (no separator row) and not valid XML.
+  //   Strip these lines to prevent them appearing as garbage in the output.
+  result = result.replace(/^\|lark-t(?:able|r|d)[^|]*\|\s*$/gm, "");
+
   // 4b-eq. Collapse multi-line <equation> blocks to single line.
   //   When fetched from Feishu, lark-cli may render equation blocks as:
   //     - <equation>formula content

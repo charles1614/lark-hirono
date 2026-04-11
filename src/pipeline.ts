@@ -13,7 +13,7 @@ import { computePatches, executePatches, cleanupEmptyTails } from "./patch/patch
 import { extractMermaidBlocks, patchMermaidWhiteboards } from "./whiteboard/mermaid-patch.js";
 import { processImages, extractImageRefs } from "./image/images.js";
 import { splitMarkdown } from "./core/chunked.js";
-import { convertToLarkTables } from "./core/lark-table.js";
+import { convertToLarkTables, escapeMarkdownBlockSyntaxInLarkTables } from "./core/lark-table.js";
 import { verifyDoc, formatReport } from "./verify/verify.js";
 import { log, logError, initLogging } from "./logging.js";
 import { optimizeNarrative, stripChatbotTail } from "./core/narrative.js";
@@ -296,6 +296,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   md = boldTableHeaders(md);
   md = convertToLarkTables(md);
   md = unescapePipes(md); // unescape \| in lark-table cells
+  md = escapeMarkdownBlockSyntaxInLarkTables(md);
   log(`After lark-table: ${md.split("\n").length} lines`);
 
   if (args.dryRun) { process.stdout.write(md); return { ok: true }; }

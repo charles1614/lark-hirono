@@ -279,6 +279,23 @@ cell equation rendering
 <lark-tr>
 <lark-td>
 
+hash-prefix
+
+</lark-td>
+<lark-td>
+
+cell leading hash text
+
+</lark-td>
+<lark-td>
+
+# of cycles where the tensor pipe was active
+
+</lark-td>
+</lark-tr>
+<lark-tr>
+<lark-td>
+
 mixed
 
 </lark-td>

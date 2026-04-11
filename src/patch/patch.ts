@@ -48,6 +48,29 @@ const INT_BG_TO_LIGHT: Record<number, string> = {
   10: "DarkRedBackground",
 };
 
+const TABLE_BLOCK_TYPES = new Set([31, 32]);
+
+function isHeadingBlock(block: Record<string, unknown>): boolean {
+  const bt = block.block_type as number;
+  return bt >= 3 && bt <= 11;
+}
+
+function isInsideTable(block: Record<string, unknown>, blockById: Map<string, Record<string, unknown>>): boolean {
+  let parentId = block.parent_id as string | undefined;
+  const seen = new Set<string>();
+
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId);
+    const parent = blockById.get(parentId);
+    if (!parent) return false;
+    const parentType = parent.block_type as number;
+    if (TABLE_BLOCK_TYPES.has(parentType)) return true;
+    parentId = parent.parent_id as string | undefined;
+  }
+
+  return false;
+}
+
 // ─── Patch Computation ──────────────────────────────────────────────────
 
 /**
@@ -65,20 +88,20 @@ export function computePatches(
 ): Patch[] {
   const bgRainbow = bgMode === "dark" ? DARK_BG_RAINBOW : LIGHT_BG_RAINBOW;
   const patches: Patch[] = [];
+  const blockById = new Map(blocks.map(b => [b.block_id as string, b]));
+  const bodyHeadingBlocks = blocks.filter(b => isHeadingBlock(b) && !isInsideTable(b, blockById));
 
   // Count H1 blocks (block_type 3)
-  const h1Count = blocks.filter(b => b.block_type === 3).length;
+  const h1Count = bodyHeadingBlocks.filter(b => b.block_type === 3).length;
   const skipH1 = h1Count === 1; // Single H1 = title, skip it
 
   // Find minimum heading level in body
   let minHeadingLevel = Infinity;
-  for (const b of blocks) {
+  for (const b of bodyHeadingBlocks) {
     const bt = b.block_type as number;
-    if (bt >= 3 && bt <= 11) {
-      // Skip H1 if it's the only one (treat as title)
-      if (skipH1 && bt === 3) continue;
-      minHeadingLevel = Math.min(minHeadingLevel, bt - 2);
-    }
+    // Skip H1 if it's the only one (treat as title)
+    if (skipH1 && bt === 3) continue;
+    minHeadingLevel = Math.min(minHeadingLevel, bt - 2);
   }
   if (minHeadingLevel === Infinity) minHeadingLevel = skipH1 ? 2 : 1;
 
@@ -88,6 +111,8 @@ export function computePatches(
 
     // Heading blocks (type 3-11)
     if (bt >= 3 && bt <= 11) {
+      if (isInsideTable(b, blockById)) continue;
+
       // Skip H1 if it's the only one (treat as title, don't color it)
       if (skipH1 && bt === 3) continue;
 

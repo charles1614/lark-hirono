@@ -231,8 +231,7 @@ export function convertToLarkTables(md: string): string {
           } else {
             result.push("    <lark-td>");
             for (const pl of processedLines) {
-              // Escape leading > to prevent lark-cli from treating cell content as blockquote
-              const escaped = pl.trimStart().startsWith(">") ? "\\" + pl.trimStart() : pl;
+              const escaped = escapeLarkTableCellMarkdownLine(pl);
               // Preserve paragraph breaks: keep empty lines
               result.push(`      ${escaped}`);
             }
@@ -251,6 +250,26 @@ export function convertToLarkTables(md: string): string {
   }
 
   return result.join("\n");
+}
+
+function escapeLarkTableCellMarkdownLine(line: string): string {
+  const trimmedStart = line.trimStart();
+  const indent = line.slice(0, line.length - trimmedStart.length);
+
+  if (trimmedStart.startsWith("\\>") || /^\\#{1,6}\s/.test(trimmedStart)) {
+    return line;
+  }
+  if (trimmedStart.startsWith(">") || /^#{1,6}\s/.test(trimmedStart)) {
+    return `${indent}\\${trimmedStart}`;
+  }
+  return line;
+}
+
+export function escapeMarkdownBlockSyntaxInLarkTables(md: string): string {
+  return md.split(/(```[\s\S]*?```|<lark-table[\s\S]*?<\/lark-table>)/g).map((block) => {
+    if (block.startsWith("```") || !block.startsWith("<lark-table")) return block;
+    return block.split("\n").map(escapeLarkTableCellMarkdownLine).join("\n");
+  }).join("");
 }
 
 function parseTableRow(line: string): string[] {

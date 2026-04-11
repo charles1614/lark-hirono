@@ -132,6 +132,11 @@ echo "=== 8. Table — strict lark-table ==="
 S8=$(section_content 'color="blue">8 ' 'color="blue">9 ')
 check "Strict table cells" 'inline-rich'
 check "Ordered list in cell" 'first'
+if grep -qF -- '\# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ✅ Strict table leading # escaped"; PASS=$((PASS+1)); else echo "  ❌ Strict table leading # NOT escaped"; FAIL=$((FAIL+1)); fi
+if grep -qF -- '      # of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ❌ Strict table raw leading # still present"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table raw leading # absent"; PASS=$((PASS+1)); fi
+
+PATCH_CHECK=$(node --input-type=module -e 'import { computePatches } from "./dist/src/patch/patch.js"; const blocks=[{block_id:"doc",block_type:1,parent_id:""},{block_id:"table",block_type:31,parent_id:"doc"},{block_id:"cell",block_type:32,parent_id:"table"},{block_id:"bad",block_type:3,parent_id:"cell"},{block_id:"h2",block_type:4,parent_id:"doc"}]; const patches=computePatches(blocks,"light"); const h2=patches.find(p=>p.blockId==="h2"); const bad=patches.find(p=>p.blockId==="bad"); console.log(`${h2?.bg ?? "missing"} ${bad ? "bad" : "nobad"}`);')
+if [[ "$PATCH_CHECK" == "LightRedBackground nobad" ]]; then echo "  ✅ Table-contained headings ignored for background depth"; PASS=$((PASS+1)); else echo "  ❌ Table-contained heading patch behavior wrong: $PATCH_CHECK"; FAIL=$((FAIL+1)); fi
 
 echo ""
 echo "=== 9. Table — HTML sessions ==="

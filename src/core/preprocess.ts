@@ -112,28 +112,34 @@ export function preprocessMarkdown(
     if (lines[0] === "") lines = lines.slice(1);
   }
 
-  // Build set of lines inside code blocks to exclude from heading detection
-  const inCodeBlock = new Set<number>();
-  let inside = false;
+  // Build set of lines inside code blocks or lark-table blocks to exclude from heading detection
+  const excludedLines = new Set<number>();
+  let insideCode = false;
+  let insideLarkTable = false;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trimStart().startsWith("```")) {
-      inside = !inside;
-      inCodeBlock.add(i);
-    } else if (inside) {
-      inCodeBlock.add(i);
+    const trimmed = lines[i].trim();
+
+    if (trimmed.startsWith("```")) {
+      insideCode = !insideCode;
+      excludedLines.add(i);
+      continue;
     }
+
+    if (/<lark-table[\s>]/.test(trimmed)) insideLarkTable = true;
+    if (insideCode || insideLarkTable) excludedLines.add(i);
+    if (/<\/lark-table>/.test(trimmed)) insideLarkTable = false;
   }
 
   // Scan: count H1 headings to decide numbering start level
   const h1Count = lines.filter((l, i) =>
-    !inCodeBlock.has(i) && /^# (?!#)/.test(l.trim())
+    !excludedLines.has(i) && /^# (?!#)/.test(l.trim())
   ).length;
   const numberLevel = h1Count <= 1 ? 2 : 1; // single H1 = title, skip it
 
   // Track heading counter for sequential blue numbering
   let headingCounter = 0;
   const out = lines.map((line, idx) => {
-    if (inCodeBlock.has(idx)) return line;
+    if (excludedLines.has(idx)) return line;
 
     // Check BEFORE transformHeading if already has number
     const preTrimmed = line.trim();

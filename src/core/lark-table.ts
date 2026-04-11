@@ -256,13 +256,28 @@ function escapeLarkTableCellMarkdownLine(line: string): string {
   const trimmedStart = line.trimStart();
   const indent = line.slice(0, line.length - trimmedStart.length);
 
-  if (trimmedStart.startsWith("\\>") || /^\\#{1,6}\s/.test(trimmedStart)) {
-    return line;
+  // Blockquote `>` at line start must be escaped — lark-cli creates a blockquote block.
+  // `#` is NOT escaped: inside <lark-td> cells, lark-cli treats it as plain text,
+  // not a heading. Escaping `#` produces a literal `\#` in the rendered cell.
+  if (trimmedStart.startsWith("\\>")) {
+    return line; // already escaped
   }
-  if (trimmedStart.startsWith(">") || /^#{1,6}\s/.test(trimmedStart)) {
+  if (trimmedStart.startsWith(">")) {
     return `${indent}\\${trimmedStart}`;
   }
-  return line;
+
+  // Escape `__` within bold/italic spans (***...***,  **...**, *...*)  to prevent
+  // lark-cli from treating `__` as emphasis markers, which strips the bold from
+  // `***content***` → `*content*`.  Escaped `\_\_` renders identically.
+  const fixed = trimmedStart.replace(/\*{1,3}[^*\n]+\*{1,3}/g, (span) => {
+    const m = span.match(/^(\*+)([\s\S]+?)(\*+)$/);
+    if (!m || m[1].length !== m[3].length) return span;
+    const [, open, content, close] = m;
+    if (!content.includes("__")) return span;
+    return open + content.replace(/__/g, "\\_\\_") + close;
+  });
+
+  return fixed === trimmedStart ? line : `${indent}${fixed}`;
 }
 
 export function escapeMarkdownBlockSyntaxInLarkTables(md: string): string {

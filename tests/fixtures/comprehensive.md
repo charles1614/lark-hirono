@@ -284,12 +284,29 @@ hash-prefix
 </lark-td>
 <lark-td>
 
-cell leading hash text
+cell leading hash text (plain, not heading)
 
 </lark-td>
 <lark-td>
 
 # of cycles where the tensor pipe was active
+
+</lark-td>
+</lark-tr>
+<lark-tr>
+<lark-td>
+
+bold-italic-underscore
+
+</lark-td>
+<lark-td>
+
+***...*** with __ underscores stays bold-italic
+
+</lark-td>
+<lark-td>
+
+***sm__throughput.avg.pct_of_peak_sustained_elapsed***
 
 </lark-td>
 </lark-tr>

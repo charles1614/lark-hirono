@@ -307,7 +307,7 @@ The optimized document should be **80%+ identical** to the original. Changes sho
    - **Green emphasis**: First mention of key technical terms (5-10 instances)
      - Plain text: `{green:term}` → renders green
      - Inline code: `` {green:`code`} `` → renders green code
-   - Raw `<text color="green">Certbot</text>` from fetched documents is also valid and passes through upload unchanged — do not strip it.
+   - **CRITICAL — convert raw `<text color>` tags from fetched docs**: Raw `<text color="green">BF16</text>` HTML from fetched documents does NOT render in uploaded docs — it appears as plain text. During optimization, convert every `<text color="COLOR">CONTENT</text>` to its shorthand form: `{green:CONTENT}`, `{red:CONTENT}`, etc. If the content has bold, place bold inside: `{green:**CONTENT**}`. Never preserve the raw `<text color>` form in the optimized output.
    - **Preserve all existing emphasis**: Every `{red:...}`, `{green:...}`, and `**bold**` in the source document MUST be carried over to the optimized version. Add new emphasis on top; never remove original emphasis.
    - **CRITICAL — bold placement**: Write `{red:**bold conclusion**}` (bold INSIDE), NEVER `**{red:conclusion}**` (bold OUTSIDE). Bold outside a color tag causes lark-cli to fragment the text into multiple spans.
    - **CRITICAL — formulas in headings**: Never put `$formula$` in a heading title — lark-cli does not render equations in headings. Use a plain text description instead.
@@ -319,12 +319,16 @@ The optimized document should be **80%+ identical** to the original. Changes sho
    - Target: 5-15 such blockquotes throughout a long document
    - These are **markdown blockquotes**, NOT `<callout>` XML blocks — they render as styled quotes in Feishu, distinct from the opening `<callout>` element.
    - **Pipeline auto-conversion**: Blockquotes matching `TL;DR`, `核心思想`, `关键结论`, `一句话总结`, `核心区别` etc. are automatically converted by the pipeline to `<callout>` XML (blue/green/yellow). Do not manually write `<callout>` XML for these patterns — write them as `> TL;DR: ...` and let the pipeline convert them. This avoids accidental nesting.
+   - **CRITICAL — no emoji prefix inside `<callout>` XML body**: When writing a `<callout>` XML block directly, do NOT start the body text with an emoji (📌, 💡, 📚, etc.). The `emoji=` attribute on the opening tag already provides the icon — adding an emoji in the body text creates a redundant double-icon display. Only the `> 📌 **Title**: ...` blockquote syntax (auto-converted by pipeline) needs the emoji prefix.
    - **CRITICAL — no nested `<callout>` XML**: Lark does not render a `<callout>` XML block nested inside another `<callout>` XML block. If the source document contains this pattern, convert the inner `<callout>` block to plain paragraphs (strip the opening/closing XML tags, keep the text). Markdown blockquotes (`> ...`) inside a `<callout>` body are fine and are NOT nested callouts.
 
 5. **Fix code blocks** — Add language tags if missing. Note: for narrative docs, the pipeline auto-tags common languages (python, bash, nginx, yaml, json, go, typescript, etc.) — you only need to add tags for languages the pipeline doesn't recognize.
 6. **Fix factual errors** — Correct typos, broken links, wrong information
 7. **Preserve images and embedded content** — If the source document contains `<image token="...">` tags (Feishu-hosted images), copy them verbatim into the optimized version at their original position. Do NOT drop or replace them with placeholder text. Losing images is a content regression.
 8. **Preserve existing tables** — If the source has a `<lark-table>` block, copy it through unchanged (or restructure it in plain markdown if restructuring is needed). Do NOT emit `|lark-table rows="N" ...|` (pipe-wrapped lark-table tag) — that is not valid syntax. Write either valid `<lark-table>` XML or a standard markdown table.
+   - **CRITICAL — lark-table cell content**: Inside `<lark-td>` blocks, treat all text as literal content:
+     - Do NOT escape `#` to `\#` — inside table cells `#` is plain text, not a heading marker.
+     - Do NOT reduce `***bold-italic***` to `*italic*` — preserve the full marker set from the source. If converting to another form (e.g. inline code), do so explicitly, but never silently drop `**`.
 9. **Preserve `<equation>` tags verbatim** — If the source contains `<equation>...</equation>` blocks, copy the ENTIRE tag (including all LaTeX content) verbatim. Do NOT:
    - Rewrite `<equation>` as `$...$` notation
    - Split the formula between `<equation>` tags and surrounding plain text
@@ -391,19 +395,37 @@ cat > report_upload.md << 'OPTIMIZED_CONTENT_END'
 [optimized markdown content here]
 OPTIMIZED_CONTENT_END
 
-# Step 2: Upload (update in place or create new)
-# To update existing doc:
-lark-hirono optimize --doc <doc-id> --input report_upload.md
-
-# To create new sibling:
+# Step 2: Upload — default is always to create a new sibling page
 lark-hirono optimize --doc <doc-id> --input report_upload.md --new \
   --title "Optimized: [Original Title]"
+
+# Only update in place if the user explicitly asked to overwrite the original:
+# lark-hirono optimize --doc <doc-id> --input report_upload.md
 ```
 
-**Report to user:**
+Note the `--new` flag creates a sibling page under the same parent node. Capture the returned URL/doc-id for the verification step below.
+
+### Task 7: Post-Upload Verification (Required)
+
+After uploading, verify the rendered document has no regressions before reporting to the user.
+
+```bash
+lark-hirono verify --doc <new-doc-id>
+```
+
+Check the output for:
+- [ ] Callout present (narrative docs)
+- [ ] Headings numbered sequentially, no Chinese ordinals
+- [ ] No `\#` artifacts (escaped hashes leaked into text)
+- [ ] No plain-text `<text color>` tags visible in content
+- [ ] Content count plausible (not drastically shorter than source)
+
+**If issues are found** → fix the local upload file, re-upload with `--new` (or overwrite the just-created page if you have its ID), and verify again. Iterate up to **3 times total**.
+
+**After a clean verify** (or after exhausting 3 attempts), report to user:
 1. **URL** of the new page
 2. **Changes made** — brief list of formatting improvements applied
-3. **Confidence level** — how confident you are in the changes
+3. **Confidence level** — how confident you are in the changes; note any unresolved issues from the retry loop
 
 ---
 

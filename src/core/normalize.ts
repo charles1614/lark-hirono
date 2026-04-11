@@ -15,6 +15,7 @@ export interface NormalizationReport {
   addOnsMermaidConverted: number;
   mermaidThemeApplied: number;
   calloutDslConverted: number;
+  quoteContainerConverted: number;
 }
 
 // ─── Add-ons → Mermaid ──────────────────────────────────────────────────────
@@ -335,6 +336,30 @@ export function unescapePipes(md: string): string {
 }
 
 /**
+ * Convert <quote-container>...</quote-container> to <callout> with grey background.
+ *
+ * <quote-container> appears in documents fetched from Feishu (lark-cli emits this XML
+ * to represent QuoteContainer blocks). However lark-cli's upload path has no parser for
+ * <quote-container> — it is fetch-only. Uploading it silently drops the block.
+ *
+ * We convert it to the nearest visual equivalent: a neutral grey callout.
+ */
+export function convertQuoteContainerToCallout(md: string): { text: string; converted: number } {
+  let converted = 0;
+  // Strip leading horizontal whitespace before the tag so the replacement
+  // callout is placed at column 0 — lark-cli requires <callout> to be
+  // unindented inside a <lark-td> cell or it silently drops the block.
+  const result = md.replace(
+    /[ \t]*<quote-container>([\s\S]*?)<\/quote-container>/g,
+    (_match, content: string) => {
+      converted++;
+      return `\n<callout emoji="clipboard" background-color="light-gray" border-color="gray">\n${content.trim()}\n</callout>`;
+    }
+  );
+  return { text: result, converted };
+}
+
+/**
  * Convert [!callout attrs]...content...[/callout] DSL to <callout attrs>...content...</callout> XML.
  *
  * The bracket DSL is an alternative authoring syntax (also appears in some Feishu exports).
@@ -394,12 +419,19 @@ export function normalizeMarkdown(mdText: string): { text: string; report: Norma
     addOnsMermaidConverted: 0,
     mermaidThemeApplied: 0,
     calloutDslConverted: 0,
+    quoteContainerConverted: 0,
   };
 
   // 0. Convert [!callout...]...[/callout] DSL → <callout>...</callout> XML
   const calloutDsl = convertCalloutDslToXml(mdText);
   mdText = calloutDsl.text;
   report.calloutDslConverted = calloutDsl.converted;
+
+  // 0.0b Convert <quote-container>...</quote-container> → <callout> (grey).
+  // quote-container is fetch-only in lark-cli; uploading it silently drops the block.
+  const quoteContainer = convertQuoteContainerToCallout(mdText);
+  mdText = quoteContainer.text;
+  report.quoteContainerConverted = quoteContainer.converted;
 
   // 0.1 Convert <add-ons> mermaid blocks → ```mermaid fences (must run before HTML stripping)
   const addOns = convertAddOnsToMermaid(mdText);

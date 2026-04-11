@@ -319,6 +319,28 @@ Final line with <text color="red">highlight</text> and [link](https://example.co
 
 </lark-td>
 </lark-tr>
+<lark-tr>
+<lark-td>
+
+quote-container
+
+</lark-td>
+<lark-td>
+
+quote-container → callout conversion
+
+</lark-td>
+<lark-td>
+
+**Metric name**
+
+<quote-container>
+Description line one.
+Description line two.
+</quote-container>
+
+</lark-td>
+</lark-tr>
 </lark-table>
 
 ## 9 Table — HTML Sessions (GTC-style, converted via normalize → lark-table)

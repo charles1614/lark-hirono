@@ -90,6 +90,10 @@ echo "shell block"
 
 Inline equation: <equation>E = mc^2</equation>
 
+Subscript protection: $\text{A}_{B}$
+
+Inline code math-like text: `code $A}_{B}$`
+
 Display equation:
 <equation>a^2 + b^2 = c^2</equation>
 

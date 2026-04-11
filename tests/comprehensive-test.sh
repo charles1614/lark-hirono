@@ -107,7 +107,9 @@ check "Callout with bullets" 'Bullet inside callout'
 echo ""
 echo "=== 5. Code and Equation ==="
 check "Python code block" '```python'
-check "Inline equation" '<equation>E = mc'
+check "Inline equation" '$E = mc'
+check "Subscript protection in math" '$\text{A}\mkern0mu_{B}$'
+check "Inline code math-like text unchanged" '`code $A}_{B}$`'
 
 echo ""
 echo "=== 6. HTML → Markdown ==="

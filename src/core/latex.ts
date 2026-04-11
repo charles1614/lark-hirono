@@ -54,6 +54,12 @@ export function convertLatexToEquationTags(md: string): { text: string; inline: 
   const result = parts.map((part) => {
     if (part.startsWith("```")) return part;
 
+    const codeSpans: string[] = [];
+    part = part.replace(/`[^`]*`/g, (match) => {
+      codeSpans.push(match);
+      return `\x00ICODE${codeSpans.length - 1}\x00`;
+    });
+
     // Phase 1: \[...\] display math (multi-line or single-line)
     // Used by Kimi, Claude, GPT for display equations.
     // Guard: must contain a LaTeX operator to avoid matching references like \[1\] or \[RFC\].
@@ -88,6 +94,8 @@ export function convertLatexToEquationTags(md: string): { text: string; inline: 
     part = part.replace(/(?<!\$)\$(?!\$)([^\n$]+)\$(?!\$)/g, (_, content: string) => {
       return `$${protectSubscripts(content)}$`;
     });
+
+    part = part.replace(/\x00ICODE(\d+)\x00/g, (_, i) => codeSpans[parseInt(i)]);
 
     return part;
   });

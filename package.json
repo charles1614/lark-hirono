@@ -1,6 +1,6 @@
 {
   "name": "lark-hirono",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Feishu (Lark) doc creation pipeline — markdown to styled Feishu documents with heading numbering, table conversion, and upload workflow",
   "repository": {
     "type": "git",

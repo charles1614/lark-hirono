@@ -29,7 +29,10 @@ jobs:
             echo "Invalid tag version: $GITHUB_REF_NAME"
             exit 1
           fi
-          npm version "$VERSION" --no-git-tag-version
+          CURRENT=$(node -p "require('./package.json').version")
+          if [ "$CURRENT" != "$VERSION" ]; then
+            npm version "$VERSION" --no-git-tag-version
+          fi
 
       - run: npm ci
 

@@ -330,26 +330,61 @@ export class LarkCli {
     }
   }
 
-  /** Overwrite a whiteboard's DSL content. dslJson is the full whiteboard-cli OpenAPI output. */
-  updateWhiteboard(boardToken: string, dslJson: string): boolean {
+  /**
+   * Overwrite a whiteboard with content.
+   * @param format - "raw" for DSL JSON, "mermaid" for mermaid source
+   */
+  updateWhiteboard(boardToken: string, content: string, format: "raw" | "mermaid" = "raw"): boolean {
     try {
       const args = [
         "docs", "+whiteboard-update",
         "--whiteboard-token", boardToken,
+        "--input_format", format,
+        "--source", "-",
         "--overwrite",
         "--yes",
+        "--as", "user",
       ];
       const out = execFileSync(this.cli, args, {
         encoding: "utf-8",
-        timeout: 60_000,
+        timeout: 120_000,
         maxBuffer: 10 * 1024 * 1024,
-        input: dslJson,
+        input: content,
         stdio: ["pipe", "pipe", "pipe"],
       });
       const parsed = JSON.parse(out);
       return parsed?.ok === true;
-    } catch {
+    } catch (err) {
+      const stderr = (err as any).stderr?.toString?.()?.slice(0, 300) ?? "";
+      if (stderr) console.error(`updateWhiteboard stderr: ${stderr}`);
       return false;
+    }
+  }
+
+  /** Query whiteboard content as raw DSL JSON. */
+  queryWhiteboard(boardToken: string): object | null {
+    try {
+      const out = execFileSync(this.cli, [
+        "whiteboard", "+query",
+        "--whiteboard-token", boardToken,
+        "--output_as", "raw",
+        "--as", "user",
+      ], {
+        encoding: "utf-8",
+        timeout: 120_000,
+        maxBuffer: 10 * 1024 * 1024,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const parsed = JSON.parse(out);
+      if (parsed?.ok && parsed.data?.nodes) return parsed.data;
+      return null;
+    } catch (err) {
+      const msg = (err as Error).message ?? "";
+      // Log stderr if available (lark-cli writes errors there)
+      const stderr = (err as any).stderr?.toString?.()?.slice(0, 300) ?? "";
+      if (stderr) console.error(`queryWhiteboard stderr: ${stderr}`);
+      else console.error(`queryWhiteboard error: ${msg.slice(0, 200)}`);
+      return null;
     }
   }
   /** Fetch doc content as markdown. Parses JSON stdout from lark-cli. */

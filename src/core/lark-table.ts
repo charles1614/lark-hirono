@@ -266,15 +266,17 @@ function escapeLarkTableCellMarkdownLine(line: string): string {
     return `${indent}\\${trimmedStart}`;
   }
 
-  // Escape `__` within bold/italic spans (***...***,  **...**, *...*)  to prevent
+  // Escape unescaped `__` within bold/italic spans (***...***,  **...**, *...*) to prevent
   // lark-cli from treating `__` as emphasis markers, which strips the bold from
   // `***content***` → `*content*`.  Escaped `\_\_` renders identically.
+  // Use negative lookbehind (?<!\\) so already-escaped \_\_ (from a prior pass or
+  // fetched Feishu markdown) is not double-escaped to \_\\_\_.
   const fixed = trimmedStart.replace(/\*{1,3}[^*\n]+\*{1,3}/g, (span) => {
     const m = span.match(/^(\*+)([\s\S]+?)(\*+)$/);
     if (!m || m[1].length !== m[3].length) return span;
     const [, open, content, close] = m;
-    if (!content.includes("__")) return span;
-    return open + content.replace(/__/g, "\\_\\_") + close;
+    if (!/(?<!\\)__/.test(content)) return span;
+    return open + content.replace(/(?<!\\)__/g, "\\_\\_") + close;
   });
 
   return fixed === trimmedStart ? line : `${indent}${fixed}`;

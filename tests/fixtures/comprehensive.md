@@ -313,6 +313,23 @@ bold-italic-underscore
 <lark-tr>
 <lark-td>
 
+bold-presc-underscore
+
+</lark-td>
+<lark-td>
+
+**..** with already-escaped \_\_ must not double-escape
+
+</lark-td>
+<lark-td>
+
+**sm\_\_throughput.avg.pct_of_peak_sustained_elapsed**
+
+</lark-td>
+</lark-tr>
+<lark-tr>
+<lark-td>
+
 mixed
 
 </lark-td>

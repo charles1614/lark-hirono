@@ -141,6 +141,10 @@ if grep -qF -- '\# of cycles where the tensor pipe was active' <<<"$S8"; then ec
 # bold/italic spans so lark-cli's parser sees them as literal underscores.
 if grep -qF -- '***sm\_\_throughput.avg.pct_of_peak_sustained_elapsed***' <<<"$S8"; then echo "  ✅ Strict table: __ escaped inside ***...*** (Bug 2 fix)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: __ NOT escaped inside ***...*** (Bug 2 regression)"; FAIL=$((FAIL+1)); fi
 if grep -qF -- '***sm__throughput' <<<"$S8"; then echo "  ❌ Strict table: raw __ inside ***...*** still present (Bug 2 regression)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no raw __ inside ***...***"; PASS=$((PASS+1)); fi
+# Bug fix: already-escaped \_\_ (from a Feishu fetch-back) must NOT be double-escaped to \_\\_\_
+# when the pipeline processes the document again (e.g. optimize --fetch → re-upload).
+if grep -qF -- '**sm\_\_throughput.avg.pct_of_peak_sustained_elapsed**' <<<"$S8"; then echo "  ✅ Strict table: pre-escaped \\_\\_ not double-escaped (idempotent)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: pre-escaped \\_\\_ was altered (double-escape bug)"; FAIL=$((FAIL+1)); fi
+if grep -qF -- '**sm\_\\_\_throughput' <<<"$S8"; then echo "  ❌ Strict table: \\_\\_ double-escaped to \\_\\\\_\\_ (Bug 2b regression)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no double-escape of \\_\\_"; PASS=$((PASS+1)); fi
 if grep -qF -- '<callout emoji="clipboard" background-color="light-gray"' <<<"$S8"; then echo "  ✅ quote-container → callout converted (light-gray)"; PASS=$((PASS+1)); else echo "  ❌ quote-container NOT converted to callout"; FAIL=$((FAIL+1)); fi
 if grep -qF -- '<quote-container>' <<<"$S8"; then echo "  ❌ raw <quote-container> still present in output"; FAIL=$((FAIL+1)); else echo "  ✅ no raw <quote-container> in output"; PASS=$((PASS+1)); fi
 if grep -qF -- 'Description line one' <<<"$S8"; then echo "  ✅ quote-container body content preserved"; PASS=$((PASS+1)); else echo "  ❌ quote-container body content MISSING"; FAIL=$((FAIL+1)); fi

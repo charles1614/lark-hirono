@@ -138,7 +138,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     const fetched = cli.fetchDoc(args.docId);
     if (!fetched) {
       logError("Failed to fetch document from Feishu");
-      process.exit(1);
+      return { ok: false };
     }
     const { text: cleaned, stripped } = stripChatbotTail(fetched);
     src = cleaned;
@@ -148,7 +148,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     const fetched = cli.fetchDoc(fetchDocId);
     if (!fetched) {
       logError("Failed to fetch source document from Feishu");
-      process.exit(1);
+      return { ok: false };
     }
     const { text: cleaned, stripped } = stripChatbotTail(fetched);
     src = cleaned;
@@ -157,7 +157,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     src = readFileSync(args.input, "utf-8");
   } else {
     logError("Missing input: provide --input file or --doc with --fetch");
-    process.exit(1);
+    return { ok: false };
   }
 
   let title = args.title;
@@ -303,7 +303,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
 
   // 8. Init CLI
   const cli = new LarkCli({ retries: 3 });
-  try { cli.status(); } catch (err) { logError(`Auth error: ${(err as Error).message}`); process.exit(1); }
+  try { cli.status(); } catch (err) { logError(`Auth error: ${(err as Error).message}`); return { ok: false }; }
 
   // 9. Create or update document
   const MAX_BYTES = 200_000;
@@ -330,7 +330,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   if (mode === "update" && args.docId && !args.createNew) {
     log(`Updating document ${args.docId}...`);
     const updated = cli.updateDoc(args.docId, md, effectiveImageDir ?? undefined);
-    if (!updated.ok) { logError("ERROR: Document update failed"); process.exit(1); }
+    if (!updated.ok) { logError("ERROR: Document update failed"); return { ok: false }; }
     docId = args.docId;
     docUrl = `https://www.feishu.cn/wiki/${docId}`;
     boardTokens = updated.boardTokens;
@@ -339,7 +339,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     log("Creating document...");
     if (mdBytes <= MAX_BYTES) {
       const created = cli.createDoc(title, md, args.wikiSpace, args.wikiNode, effectiveImageDir ?? undefined);
-      if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
+      if (!created) { logError("ERROR: Document creation failed"); return { ok: false }; }
       docId = created.doc_id;
       docUrl = created.url;
       boardTokens = created.boardTokens;
@@ -349,7 +349,7 @@ export async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
       log(`Split into ${chunks.length} chunks`);
 
       const created = cli.createDoc(title, chunks[0].markdown, args.wikiSpace, args.wikiNode, effectiveImageDir ?? undefined);
-      if (!created) { logError("ERROR: Document creation failed"); process.exit(1); }
+      if (!created) { logError("ERROR: Document creation failed"); return { ok: false }; }
       docId = created.doc_id;
       docUrl = created.url;
       log(`Created chunk 0/${chunks.length - 1}: ${docId}`);

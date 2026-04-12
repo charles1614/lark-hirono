@@ -40,13 +40,9 @@ export function splitMarkdown(mdText: string, config: Partial<ChunkConfig> = {})
   const lines = mdText.split("\n");
   const chunks: Chunk[] = [];
 
-  if (lines.length <= cfg.maxLines && Buffer.byteLength(mdText, "utf-8") <= cfg.maxBytes) {
-    return [{
-      index: 0,
-      markdown: mdText,
-      lineCount: lines.length,
-      byteSize: Buffer.byteLength(mdText, "utf-8"),
-    }];
+  const totalBytes = Buffer.byteLength(mdText, "utf-8");
+  if (lines.length <= cfg.maxLines && totalBytes <= cfg.maxBytes) {
+    return [{ index: 0, markdown: mdText, lineCount: lines.length, byteSize: totalBytes }];
   }
 
   let currentLines: string[] = [];
@@ -108,15 +104,17 @@ export function splitMarkdown(mdText: string, config: Partial<ChunkConfig> = {})
       const carryLines = currentLines.slice(splitAt);
 
       if (keepLines.length > 0) {
+        const keepMd = keepLines.join("\n");
+        const keepSize = Buffer.byteLength(keepMd, "utf-8");
         chunks.push({
           index: chunkIndex++,
-          markdown: keepLines.join("\n"),
+          markdown: keepMd,
           lineCount: keepLines.length,
-          byteSize: Buffer.byteLength(keepLines.join("\n"), "utf-8"),
+          byteSize: keepSize,
         });
+        currentSize -= keepSize + 1; // +1 for the \n between keep and carry
       }
       currentLines = carryLines;
-      currentSize = Buffer.byteLength(carryLines.join("\n"), "utf-8");
     }
 
     currentLines.push(line);

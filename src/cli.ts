@@ -195,7 +195,9 @@ export class LarkCli {
       });
       const parsed = JSON.parse(out);
       return parsed?.ok === true || parsed?.code === 0;
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message?.slice(0, 200) ?? "unknown error";
+      console.error(`updateSection error: ${msg}`);
       return false;
     }
   }
@@ -218,7 +220,9 @@ export class LarkCli {
       });
       const parsed = JSON.parse(out);
       return parsed?.ok === true || parsed?.code === 0;
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message?.slice(0, 200) ?? "unknown error";
+      console.error(`appendDoc error: ${msg}`);
       return false;
     }
   }
@@ -264,7 +268,9 @@ export class LarkCli {
         if (docId) return { doc_id: docId, url: docUrl, boardTokens };
       }
       return null;
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message?.slice(0, 200) ?? "unknown error";
+      console.error(`createDoc error: ${msg}`);
       return null;
     }
   }
@@ -358,7 +364,9 @@ export class LarkCli {
       const parsed = JSON.parse(out);
       const boardTokens = (parsed?.data?.board_tokens as string[]) ?? [];
       return { ok: parsed?.ok === true || parsed?.success === true, boardTokens };
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message?.slice(0, 200) ?? "unknown error";
+      console.error(`updateDoc error: ${msg}`);
       return { ok: false, boardTokens: [] };
     }
   }
@@ -434,7 +442,9 @@ export class LarkCli {
       const parsed = JSON.parse(out);
       if (parsed?.data?.markdown) return parsed.data.markdown;
       return null;
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message?.slice(0, 200) ?? "unknown error";
+      console.error(`fetchDoc error: ${msg}`);
       return null;
     }
   }

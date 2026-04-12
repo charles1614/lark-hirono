@@ -140,7 +140,7 @@ Optimize: Fetch → Normalize → Analyze → Narrative → Preprocess → Split
 
 ### Key Steps
 
-1. **Normalize** — `[!callout]` DSL → `<callout>` XML; `<add-ons>` mermaid → fences; mermaid theming; HTML (`<p>`, `<ul>`, `<li>`, `<strong>`, `<a>`) → clean Markdown
+1. **Normalize** — `[!callout]` DSL → `<callout>` XML; `<quote-container>` → `<callout>` (in tables) / `>` blockquote (elsewhere); `<add-ons>` mermaid → fences; mermaid theming; HTML (`<p>`, `<ul>`, `<li>`, `<strong>`, `<a>`) → clean Markdown
 2. **Analyze** — Classify document type based on table count and heading density
 3. **Narrative** — For narrative docs: callout injection, code block tagging, signpost bolding
 4. **Preprocess** — Heading numbering, strip title, blue prefix + rainbow backgrounds
@@ -180,7 +180,7 @@ Priority: CLI flags → config file → built-in defaults.
 ## Tests
 
 ```bash
-npm test  # 116 checks, all local file-based
+npm test  # 127 checks, all local file-based
 ```
 
 ## Architecture
@@ -228,6 +228,14 @@ src/
 - Callout format simplified (blank lines removed)
 
 **Mitigation:** Verify uses block-level structure (accurate), not markdown export (corrupted).
+
+### lark-cli Markdown Parser Limitations
+
+The following are lark-cli parser behaviors that cannot be fixed at the pipeline level:
+
+- **`#` in table cells** — `#` at line start creates a heading even inside `<lark-td>` and `<callout>` blocks. `\#` renders as literal `\#` (backslash visible). Pipeline inserts a zero-width space (U+200B) before `#` to prevent heading parsing.
+- **`***bold-italic***` with underscores** — Any `_` inside `***...**` causes lark-cli to strip bold, leaving only `*italic*`. This includes `__` (double underscore), single `_`, and even `<strong><em>` HTML. Use backtick code format for metric names with underscores.
+- **`<quote-container>` is fetch-only** — lark-cli emits `<quote-container>` XML when fetching but silently drops it on upload. Pipeline converts: inside tables → `<callout>`, outside → blockquote `>`.
 
 ### LLM Content Emphasis Not Automated
 

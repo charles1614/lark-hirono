@@ -45,7 +45,7 @@ Forms available:
 - `[!callout icon=bulb bg=2 border=2]` — **blue callout** for TL;DR / section-opening summaries (use this, NOT `|>`)
 - `[!callout icon=pushpin bg=3 border=3]` — **green callout** for "一句话总结" / "一句话定位" / "核心思想" (use this, NOT `|>`)
 - `[!callout icon=X bg=N border=N]` — Feishu-native callout box for document-opening summary
-- `|>` quote container — other key insights, observations, comparisons
+- `|>` quote container — other key insights, observations, comparisons (note: fetched `<quote-container>` blocks are auto-converted by the pipeline: → `<callout>` inside tables, → `>` blockquote elsewhere)
 - `> plain blockquote` — any observation, comparison, or summary that benefits from visual grouping
 
 When to use:

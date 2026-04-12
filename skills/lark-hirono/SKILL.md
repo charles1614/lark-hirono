@@ -326,9 +326,10 @@ The optimized document should be **80%+ identical** to the original. Changes sho
 6. **Fix factual errors** — Correct typos, broken links, wrong information
 7. **Preserve images and embedded content** — If the source document contains `<image token="...">` tags (Feishu-hosted images), copy them verbatim into the optimized version at their original position. Do NOT drop or replace them with placeholder text. Losing images is a content regression.
 8. **Preserve existing tables** — If the source has a `<lark-table>` block, copy it through unchanged (or restructure it in plain markdown if restructuring is needed). Do NOT emit `|lark-table rows="N" ...|` (pipe-wrapped lark-table tag) — that is not valid syntax. Write either valid `<lark-table>` XML or a standard markdown table.
-   - **CRITICAL — lark-table cell content**: Inside `<lark-td>` blocks, treat all text as literal content:
-     - Do NOT escape `#` to `\#` — inside table cells `#` is plain text, not a heading marker.
-     - Do NOT reduce `***bold-italic***` to `*italic*` — preserve the full marker set from the source. If converting to another form (e.g. inline code), do so explicitly, but never silently drop `**`.
+   - **CRITICAL — lark-table cell content**: Inside `<lark-td>` blocks, be aware of these lark-cli behaviors:
+     - **`#` at line start**: lark-cli creates a heading even inside cells and callouts. Do NOT manually escape to `\#` (renders as literal `\#` with backslash). The pipeline automatically inserts an invisible zero-width space (ZWSP) before `#` to prevent heading rendering — no manual intervention needed.
+     - **`***bold-italic***` with underscored content** (e.g. `***sm__throughput***`): lark-cli's markdown parser misinterprets `_` inside `***...**` and strips bold, leaving only `*italic*`. This is a **lark-cli limitation with no workaround via markdown**. For metric names with underscores, use backtick code format instead: `` `sm__throughput` ``. Bold-only (`**...**`) and italic-only (`*...*`) work fine with underscores.
+     - Preserve the full marker set from the source. If converting to another form (e.g. inline code), do so explicitly, but never silently drop formatting.
 9. **Preserve `<equation>` tags verbatim** — If the source contains `<equation>...</equation>` blocks, copy the ENTIRE tag (including all LaTeX content) verbatim. Do NOT:
    - Rewrite `<equation>` as `$...$` notation
    - Split the formula between `<equation>` tags and surrounding plain text
@@ -338,6 +339,12 @@ The optimized document should be **80%+ identical** to the original. Changes sho
    **Multi-subscript limitation (lark-cli bug)**: Formulas with two or more `_{...}` subscripts break because lark-cli processes `_` as markdown italic INSIDE `<equation>`. If a formula has 2+ subscripts that use `_{...}` (brace follows `_`), use single-char subscripts without braces instead: `_p`, `_h`, `_e` etc. Single `_` per formula using `_{\text{...}}` is safe.
 
    **Pattern that MUST be preserved exactly**: if source has `<equation>\text{Formula}_{\text{active}} = \frac{...}{...} \times 100\%</equation>` (single subscript), output it unchanged. For multi-subscript formulas, simplify subscript notation.
+
+10. **`<quote-container>` handling** — Fetched Feishu documents may contain `<quote-container>...</quote-container>` blocks (lark-cli's XML representation of QuoteContainer blocks). lark-cli's upload path does NOT support `<quote-container>` — it silently drops the block. The pipeline converts them automatically based on context:
+    - **Inside `<lark-table>`**: → `<callout>` (grey) — blockquotes don't work in table cells
+    - **Outside `<lark-table>`**: → blockquote `>` (native markdown)
+    
+    When writing optimized content, you do NOT need to convert `<quote-container>` manually — the pipeline handles it. If you see `<quote-container>` in a fetched source, you may either leave it as-is (pipeline converts) or manually convert to the appropriate form.
 
 #### What NOT to change:
 
@@ -416,7 +423,7 @@ lark-hirono verify --doc <new-doc-id>
 Check the output for:
 - [ ] Callout present (narrative docs)
 - [ ] Headings numbered sequentially, no Chinese ordinals
-- [ ] No `\#` artifacts (escaped hashes leaked into text)
+- [ ] No `\#` artifacts (escaped hashes leaked into text — pipeline uses ZWSP instead)
 - [ ] No plain-text `<text color>` tags visible in content
 - [ ] Content count plausible (not drastically shorter than source)
 

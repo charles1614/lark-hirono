@@ -112,9 +112,9 @@ export function splitMarkdown(mdText: string, config: Partial<ChunkConfig> = {})
           lineCount: keepLines.length,
           byteSize: keepSize,
         });
-        currentSize -= keepSize + 1; // +1 for the \n between keep and carry
       }
       currentLines = carryLines;
+      currentSize = carryLines.reduce((acc, l) => acc + Buffer.byteLength(l, "utf-8") + 1, 0);
     }
 
     currentLines.push(line);

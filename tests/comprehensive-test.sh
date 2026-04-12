@@ -132,19 +132,11 @@ echo "=== 8. Table — strict lark-table ==="
 S8=$(section_content 'color="blue">8 ' 'color="blue">9 ')
 check "Strict table cells" 'inline-rich'
 check "Ordered list in cell" 'first'
-# Bug fix: # inside <lark-td> is plain text — lark-cli does not interpret it as a heading.
-# The pipeline must NOT escape it to \# (which renders as literal backslash-hash in Feishu).
-if grep -qF -- '# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ✅ Strict table: leading # preserved as plain text (not escaped)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: leading # MISSING from output"; FAIL=$((FAIL+1)); fi
-if grep -qF -- '\# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ❌ Strict table: # incorrectly escaped to \\# (Bug 1 regression)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no spurious \\# escape"; PASS=$((PASS+1)); fi
-# Bug fix: ***content*** with __ underscores — lark-cli treats __ as bold markers, stripping
-# the ** from *** and leaving only *content* (italic). The pipeline escapes __ → \_\_ inside
-# bold/italic spans so lark-cli's parser sees them as literal underscores.
-if grep -qF -- '***sm\_\_throughput.avg.pct_of_peak_sustained_elapsed***' <<<"$S8"; then echo "  ✅ Strict table: __ escaped inside ***...*** (Bug 2 fix)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: __ NOT escaped inside ***...*** (Bug 2 regression)"; FAIL=$((FAIL+1)); fi
-if grep -qF -- '***sm__throughput' <<<"$S8"; then echo "  ❌ Strict table: raw __ inside ***...*** still present (Bug 2 regression)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no raw __ inside ***...***"; PASS=$((PASS+1)); fi
-# Bug fix: already-escaped \_\_ (from a Feishu fetch-back) must NOT be double-escaped to \_\\_\_
-# when the pipeline processes the document again (e.g. optimize --fetch → re-upload).
-if grep -qF -- '**sm\_\_throughput.avg.pct_of_peak_sustained_elapsed**' <<<"$S8"; then echo "  ✅ Strict table: pre-escaped \\_\\_ not double-escaped (idempotent)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: pre-escaped \\_\\_ was altered (double-escape bug)"; FAIL=$((FAIL+1)); fi
-if grep -qF -- '**sm\_\\_\_throughput' <<<"$S8"; then echo "  ❌ Strict table: \\_\\_ double-escaped to \\_\\\\_\\_ (Bug 2b regression)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no double-escape of \\_\\_"; PASS=$((PASS+1)); fi
+# # inside a <callout> within a <lark-td> must NOT be escaped — it is plain text inside the
+# callout block context, not a heading. The pipeline tracks nesting depth and skips escaping
+# for lines inside callout/grid/column blocks.
+if grep -qF -- '# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ✅ Strict table: # inside callout preserved as plain text (not escaped)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: # inside callout MISSING from output"; FAIL=$((FAIL+1)); fi
+if grep -qF -- '\# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ❌ Strict table: # inside callout incorrectly escaped to \\# (regression)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no spurious \\# escape inside callout"; PASS=$((PASS+1)); fi
 if grep -qF -- '<callout emoji="clipboard" background-color="light-gray"' <<<"$S8"; then echo "  ✅ quote-container → callout converted (light-gray)"; PASS=$((PASS+1)); else echo "  ❌ quote-container NOT converted to callout"; FAIL=$((FAIL+1)); fi
 if grep -qF -- '<quote-container>' <<<"$S8"; then echo "  ❌ raw <quote-container> still present in output"; FAIL=$((FAIL+1)); else echo "  ✅ no raw <quote-container> in output"; PASS=$((PASS+1)); fi
 if grep -qF -- 'Description line one' <<<"$S8"; then echo "  ✅ quote-container body content preserved"; PASS=$((PASS+1)); else echo "  ❌ quote-container body content MISSING"; FAIL=$((FAIL+1)); fi

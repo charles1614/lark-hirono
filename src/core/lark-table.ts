@@ -256,36 +256,37 @@ function escapeLarkTableCellMarkdownLine(line: string): string {
   const trimmedStart = line.trimStart();
   const indent = line.slice(0, line.length - trimmedStart.length);
 
-  // Blockquote `>` at line start must be escaped — lark-cli creates a blockquote block.
-  // `#` is NOT escaped: inside <lark-td> cells, lark-cli treats it as plain text,
-  // not a heading. Escaping `#` produces a literal `\#` in the rendered cell.
-  if (trimmedStart.startsWith("\\>")) {
+  // Blockquote `>` and heading `#` at line start must be escaped — lark-cli creates
+  // block-level elements (blockquote / heading) from these markers even inside <lark-td>.
+  // NOTE: this function is only called for lines that are NOT inside a nested block
+  // (callout, grid, column) — see escapeMarkdownBlockSyntaxInLarkTables for depth tracking.
+  // Inside callouts, `#` is plain text and must not be escaped.
+  if (trimmedStart.startsWith("\\>") || /^\\#{1,6}\s/.test(trimmedStart)) {
     return line; // already escaped
   }
-  if (trimmedStart.startsWith(">")) {
+  if (trimmedStart.startsWith(">") || /^#{1,6}\s/.test(trimmedStart)) {
     return `${indent}\\${trimmedStart}`;
   }
-
-  // Escape unescaped `__` within bold/italic spans (***...***,  **...**, *...*) to prevent
-  // lark-cli from treating `__` as emphasis markers, which strips the bold from
-  // `***content***` → `*content*`.  Escaped `\_\_` renders identically.
-  // Use negative lookbehind (?<!\\) so already-escaped \_\_ (from a prior pass or
-  // fetched Feishu markdown) is not double-escaped to \_\\_\_.
-  const fixed = trimmedStart.replace(/\*{1,3}[^*\n]+\*{1,3}/g, (span) => {
-    const m = span.match(/^(\*+)([\s\S]+?)(\*+)$/);
-    if (!m || m[1].length !== m[3].length) return span;
-    const [, open, content, close] = m;
-    if (!/(?<!\\)__/.test(content)) return span;
-    return open + content.replace(/(?<!\\)__/g, "\\_\\_") + close;
-  });
-
-  return fixed === trimmedStart ? line : `${indent}${fixed}`;
+  return line;
 }
+
+// Nested block tags whose content should not receive block-syntax escaping.
+// Inside these, `#` is plain text (lark-cli does not promote it to a heading block).
+const NESTED_BLOCK_OPEN = /^<(callout|grid|column)\b/;
+const NESTED_BLOCK_CLOSE = /^<\/(callout|grid|column)>/;
 
 export function escapeMarkdownBlockSyntaxInLarkTables(md: string): string {
   return md.split(/(```[\s\S]*?```|<lark-table[\s\S]*?<\/lark-table>)/g).map((block) => {
     if (block.startsWith("```") || !block.startsWith("<lark-table")) return block;
-    return block.split("\n").map(escapeLarkTableCellMarkdownLine).join("\n");
+    let nestDepth = 0;
+    return block.split("\n").map((line) => {
+      const trimmed = line.trim();
+      if (NESTED_BLOCK_OPEN.test(trimmed)) { nestDepth++; return line; }
+      if (NESTED_BLOCK_CLOSE.test(trimmed)) { nestDepth = Math.max(0, nestDepth - 1); return line; }
+      // Only escape at the top level of <lark-td> — inside callouts/grid/column,
+      // `#` is not heading syntax and must pass through unchanged.
+      return nestDepth === 0 ? escapeLarkTableCellMarkdownLine(line) : line;
+    }).join("\n");
   }).join("");
 }
 

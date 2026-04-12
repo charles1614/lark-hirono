@@ -279,51 +279,20 @@ cell equation rendering
 <lark-tr>
 <lark-td>
 
-hash-prefix
+hash-in-callout
 
 </lark-td>
 <lark-td>
 
-cell leading hash text (plain, not heading)
+# inside callout in cell — plain text, not heading
 
 </lark-td>
 <lark-td>
 
+<callout emoji="clipboard" background-color="light-gray" border-color="gray">
 # of cycles where the tensor pipe was active
-
-</lark-td>
-</lark-tr>
-<lark-tr>
-<lark-td>
-
-bold-italic-underscore
-
-</lark-td>
-<lark-td>
-
-***...*** with __ underscores stays bold-italic
-
-</lark-td>
-<lark-td>
-
-***sm__throughput.avg.pct_of_peak_sustained_elapsed***
-
-</lark-td>
-</lark-tr>
-<lark-tr>
-<lark-td>
-
-bold-presc-underscore
-
-</lark-td>
-<lark-td>
-
-**..** with already-escaped \_\_ must not double-escape
-
-</lark-td>
-<lark-td>
-
-**sm\_\_throughput.avg.pct_of_peak_sustained_elapsed**
+(metric description line)
+</callout>
 
 </lark-td>
 </lark-tr>

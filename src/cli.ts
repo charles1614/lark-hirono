@@ -24,6 +24,8 @@ function resolveFromPath(): string | null {
   }
 }
 
+const MIN_LARK_CLI_VERSION = "1.0.9";
+
 export function findLarkCli(): string {
   for (const p of CLI_CANDIDATES) {
     if (existsSync(p)) return p;
@@ -37,6 +39,36 @@ export function findLarkCli(): string {
       "  node node_modules/@larksuite/cli/scripts/install.js\n" +
       "Or set LARK_CLI env var."
   );
+}
+
+/**
+ * Check lark-cli version meets minimum requirement.
+ * Returns the version string, or throws if too old.
+ */
+export function checkLarkCliVersion(cliPath: string): string {
+  try {
+    const out = execFileSync(cliPath, ["--version"], {
+      encoding: "utf-8",
+      timeout: 10_000,
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    // Output: "lark-cli version X.Y.Z"
+    const match = out.match(/(\d+\.\d+\.\d+)/);
+    if (!match) return "unknown";
+    const version = match[1];
+    const [maj, min, pat] = version.split(".").map(Number);
+    const [rMaj, rMin, rPat] = MIN_LARK_CLI_VERSION.split(".").map(Number);
+    if (maj < rMaj || (maj === rMaj && min < rMin) || (maj === rMaj && min === rMin && pat < rPat)) {
+      throw new Error(
+        `lark-cli ${version} is too old (requires >=${MIN_LARK_CLI_VERSION}). ` +
+        `Update with: npm update -g @larksuite/cli`
+      );
+    }
+    return version;
+  } catch (err) {
+    if ((err as Error).message?.includes("too old")) throw err;
+    return "unknown";
+  }
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -77,6 +109,7 @@ export class LarkCli {
     this.cli = opts.cliPath ?? findLarkCli();
     this.timeout = opts.timeout ?? 60_000;
     this.retries = opts.retries ?? 1;
+    checkLarkCliVersion(this.cli);
   }
 
   /** Run lark-cli and return parsed JSON. */

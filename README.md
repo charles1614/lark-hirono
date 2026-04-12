@@ -29,7 +29,7 @@ npm install -g lark-hirono@latest
 
 ### Install `lark-cli`
 
-`lark-hirono` shells out to `lark-cli` for auth, document APIs, and uploads. Install it first if you do not already have it:
+`lark-hirono` shells out to `lark-cli` for auth, document APIs, and uploads. **Requires lark-cli >= 1.0.9** (whiteboard query API). Install or update:
 
 ```bash
 mkdir -p /tmp/larkcli

@@ -336,26 +336,44 @@ export function unescapePipes(md: string): string {
 }
 
 /**
- * Convert <quote-container>...</quote-container> to <callout> with grey background.
+ * Convert <quote-container>...</quote-container> for lark-cli upload.
  *
  * <quote-container> appears in documents fetched from Feishu (lark-cli emits this XML
  * to represent QuoteContainer blocks). However lark-cli's upload path has no parser for
  * <quote-container> — it is fetch-only. Uploading it silently drops the block.
  *
- * We convert it to the nearest visual equivalent: a neutral grey callout.
+ * Context-dependent conversion:
+ *   - Inside <lark-table>: → <callout> (grey) — blockquotes don't work in table cells.
+ *   - Outside <lark-table>: → blockquote `>` — native markdown, renders natively in Feishu.
  */
 export function convertQuoteContainerToCallout(md: string): { text: string; converted: number } {
   let converted = 0;
-  // Strip leading horizontal whitespace before the tag so the replacement
-  // callout is placed at column 0 — lark-cli requires <callout> to be
-  // unindented inside a <lark-td> cell or it silently drops the block.
-  const result = md.replace(
-    /[ \t]*<quote-container>([\s\S]*?)<\/quote-container>/g,
-    (_match, content: string) => {
-      converted++;
-      return `\n<callout emoji="clipboard" background-color="light-gray" border-color="gray">\n${content.trim()}\n</callout>`;
+
+  // Split on lark-table blocks to apply different conversions per context.
+  const result = md.split(/(<lark-table[\s\S]*?<\/lark-table>)/g).map((segment) => {
+    if (segment.startsWith("<lark-table")) {
+      // Inside table: convert to callout (blockquotes don't work in cells).
+      // Strip leading horizontal whitespace so the callout is at column 0 —
+      // lark-cli requires <callout> to be unindented or it silently drops it.
+      return segment.replace(
+        /[ \t]*<quote-container>([\s\S]*?)<\/quote-container>/g,
+        (_match, content: string) => {
+          converted++;
+          return `\n<callout emoji="clipboard" background-color="light-gray" border-color="gray">\n${content.trim()}\n</callout>`;
+        }
+      );
     }
-  );
+    // Outside table: convert to blockquote (native markdown).
+    return segment.replace(
+      /[ \t]*<quote-container>([\s\S]*?)<\/quote-container>/g,
+      (_match, content: string) => {
+        converted++;
+        const lines = content.trim().split("\n");
+        return "\n" + lines.map((l) => `> ${l}`).join("\n") + "\n";
+      }
+    );
+  }).join("");
+
   return { text: result, converted };
 }
 

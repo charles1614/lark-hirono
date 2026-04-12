@@ -252,41 +252,36 @@ export function convertToLarkTables(md: string): string {
   return result.join("\n");
 }
 
+// Zero-width space (U+200B) — invisible character inserted before `#` at line start
+// to prevent lark-cli from parsing it as a heading. Unlike `\#` (which renders as
+// literal backslash-hash), ZWSP is truly invisible and produces plain `# text`.
+const ZWSP = "\u200B";
+
 function escapeLarkTableCellMarkdownLine(line: string): string {
   const trimmedStart = line.trimStart();
   const indent = line.slice(0, line.length - trimmedStart.length);
 
-  // Blockquote `>` and heading `#` at line start must be escaped — lark-cli creates
-  // block-level elements (blockquote / heading) from these markers even inside <lark-td>.
-  // NOTE: this function is only called for lines that are NOT inside a nested block
-  // (callout, grid, column) — see escapeMarkdownBlockSyntaxInLarkTables for depth tracking.
-  // Inside callouts, `#` is plain text and must not be escaped.
-  if (trimmedStart.startsWith("\\>") || /^\\#{1,6}\s/.test(trimmedStart)) {
+  // Blockquote `>` at line start — escape with backslash (lark-cli renders \> correctly).
+  if (trimmedStart.startsWith("\\>")) {
     return line; // already escaped
   }
-  if (trimmedStart.startsWith(">") || /^#{1,6}\s/.test(trimmedStart)) {
+  if (trimmedStart.startsWith(">")) {
     return `${indent}\\${trimmedStart}`;
+  }
+
+  // Heading `#` at line start — insert ZWSP before it. lark-cli treats `# text` as a
+  // heading even inside <lark-td> and <callout> blocks. `\#` shows a literal backslash.
+  // ZWSP is invisible and breaks the heading detection without changing the visual output.
+  if (/^#{1,6}\s/.test(trimmedStart) && !trimmedStart.startsWith(ZWSP)) {
+    return `${indent}${ZWSP}${trimmedStart}`;
   }
   return line;
 }
 
-// Nested block tags whose content should not receive block-syntax escaping.
-// Inside these, `#` is plain text (lark-cli does not promote it to a heading block).
-const NESTED_BLOCK_OPEN = /^<(callout|grid|column)\b/;
-const NESTED_BLOCK_CLOSE = /^<\/(callout|grid|column)>/;
-
 export function escapeMarkdownBlockSyntaxInLarkTables(md: string): string {
   return md.split(/(```[\s\S]*?```|<lark-table[\s\S]*?<\/lark-table>)/g).map((block) => {
     if (block.startsWith("```") || !block.startsWith("<lark-table")) return block;
-    let nestDepth = 0;
-    return block.split("\n").map((line) => {
-      const trimmed = line.trim();
-      if (NESTED_BLOCK_OPEN.test(trimmed)) { nestDepth++; return line; }
-      if (NESTED_BLOCK_CLOSE.test(trimmed)) { nestDepth = Math.max(0, nestDepth - 1); return line; }
-      // Only escape at the top level of <lark-td> — inside callouts/grid/column,
-      // `#` is not heading syntax and must pass through unchanged.
-      return nestDepth === 0 ? escapeLarkTableCellMarkdownLine(line) : line;
-    }).join("\n");
+    return block.split("\n").map(escapeLarkTableCellMarkdownLine).join("\n");
   }).join("");
 }
 

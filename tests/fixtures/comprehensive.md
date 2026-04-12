@@ -78,6 +78,11 @@ More text in callout.
 Warning callout with **bold** and `code`.
 </callout>
 
+<quote-container>
+Doc-level quote container line one.
+Doc-level quote container line two.
+</quote-container>
+
 ## 5 Code and Equation Matrix
 
 ```python
@@ -279,15 +284,17 @@ cell equation rendering
 <lark-tr>
 <lark-td>
 
-hash-in-callout
+hash-prefix
 
 </lark-td>
 <lark-td>
 
-# inside callout in cell — plain text, not heading
+# inside callout in cell — ZWSP prevents heading
 
 </lark-td>
 <lark-td>
+
+**Metric name**
 
 <callout emoji="clipboard" background-color="light-gray" border-color="gray">
 # of cycles where the tensor pipe was active

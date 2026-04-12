@@ -103,6 +103,10 @@ echo "=== 4. Callout / Quote ==="
 check "Blockquote" '📌 **Insight**'
 check "Callout block" '<callout'
 check "Callout with bullets" 'Bullet inside callout'
+# Doc-level <quote-container> → blockquote `>` (not callout)
+check "Doc-level quote-container → blockquote" '> Doc-level quote container line one.'
+check "Doc-level quote-container line two" '> Doc-level quote container line two.'
+check_not "Doc-level quote-container NOT callout" 'Doc-level quote container line one.</callout>'
 
 echo ""
 echo "=== 5. Code and Equation ==="
@@ -132,11 +136,11 @@ echo "=== 8. Table — strict lark-table ==="
 S8=$(section_content 'color="blue">8 ' 'color="blue">9 ')
 check "Strict table cells" 'inline-rich'
 check "Ordered list in cell" 'first'
-# # inside a <callout> within a <lark-td> must NOT be escaped — it is plain text inside the
-# callout block context, not a heading. The pipeline tracks nesting depth and skips escaping
-# for lines inside callout/grid/column blocks.
-if grep -qF -- '# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ✅ Strict table: # inside callout preserved as plain text (not escaped)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: # inside callout MISSING from output"; FAIL=$((FAIL+1)); fi
-if grep -qF -- '\# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ❌ Strict table: # inside callout incorrectly escaped to \\# (regression)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no spurious \\# escape inside callout"; PASS=$((PASS+1)); fi
+# # at line start in <lark-td> — pipeline inserts ZWSP (U+200B) before # to prevent heading.
+# Unlike \# (which shows a literal backslash), ZWSP is invisible and renders as plain "# text".
+ZWSP=$'\xe2\x80\x8b'
+if grep -qF -- "${ZWSP}# of cycles where the tensor pipe was active" <<<"$S8"; then echo "  ✅ Strict table: ZWSP inserted before # (prevents heading)"; PASS=$((PASS+1)); else echo "  ❌ Strict table: ZWSP+# MISSING from output"; FAIL=$((FAIL+1)); fi
+if grep -qF -- '\# of cycles where the tensor pipe was active' <<<"$S8"; then echo "  ❌ Strict table: # escaped with backslash (shows literal \\#)"; FAIL=$((FAIL+1)); else echo "  ✅ Strict table: no backslash \\# escape"; PASS=$((PASS+1)); fi
 if grep -qF -- '<callout emoji="clipboard" background-color="light-gray"' <<<"$S8"; then echo "  ✅ quote-container → callout converted (light-gray)"; PASS=$((PASS+1)); else echo "  ❌ quote-container NOT converted to callout"; FAIL=$((FAIL+1)); fi
 if grep -qF -- '<quote-container>' <<<"$S8"; then echo "  ❌ raw <quote-container> still present in output"; FAIL=$((FAIL+1)); else echo "  ✅ no raw <quote-container> in output"; PASS=$((PASS+1)); fi
 if grep -qF -- 'Description line one' <<<"$S8"; then echo "  ✅ quote-container body content preserved"; PASS=$((PASS+1)); else echo "  ❌ quote-container body content MISSING"; FAIL=$((FAIL+1)); fi

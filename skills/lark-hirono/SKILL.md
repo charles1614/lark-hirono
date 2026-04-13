@@ -7,6 +7,7 @@ description: >-
   analyze document, highlight keywords, verify feishu doc.
   Triggers on: lark-hirono, feishu upload, feishu optimize, feishu fetch, feishu analyze,
   feishu highlight, feishu verify.
+compatibility: Requires Node.js 20+, npm, and lark-cli for Feishu authentication.
 ---
 
 # Lark Hirono — Feishu Document Toolkit
@@ -68,27 +69,6 @@ Determine the action from user intent:
 | Apply keyword highlights | `highlight apply <input.md> <keywords.json>` |
 | Verify Feishu doc quality | `verify --doc <id>` |
 | Authentication management | `auth <subcommand>` |
-
----
-
-## How CLI and Skill Work Together
-
-The skill orchestrates **both CLI commands and LLM judgment**:
-
-**CLI provides deterministic operations:**
-- `fetch` — retrieve documents as markdown
-- `upload` — create/update documents with formatting transforms
-- `analyze` — document structure analysis
-- `highlight` — keyword extraction and application
-
-**LLM provides judgment and decisions:**
-- Detect and fix corruption (paragraphs as headings)
-- Decide where to add emphasis (`{red:...}`, `{green:...}`)
-- Determine callout placement and content
-- Ensure 80%+ identical to original
-- Content preservation audits
-
-**The skill workflow uses CLI commands as tools** while applying LLM judgment for quality decisions.
 
 ---
 
@@ -162,16 +142,7 @@ lark-hirono fetch --doc <source-doc-id>
 
 Save the full output. This is the document to optimize.
 
-**Analyze carefully:**
-- Overall topic and purpose of the document
-- Author's writing style and tone (formal/informal, technical/accessible)
-- Existing heading structure and hierarchy
-- Content organization and flow
-- Level of detail in each section
-- Use of formatting (bold, lists, code blocks, etc.)
-- **Technical payload that must survive**: numbers, formulas, systems, complexity, deployment facts, experiment settings, citations, caveats, mechanism details
-
-**Record your observations** — you will need them in Task 5 to preserve the original character.
+**Analyze carefully:** topic, purpose, writing style/tone, heading structure, content flow, formatting patterns, and **technical payload that must survive** (numbers, formulas, systems, deployment facts, experiment settings, citations, caveats). Record observations for Task 5.
 
 ### Task 2: Read Reference Document
 
@@ -181,12 +152,7 @@ lark-hirono fetch --doc <reference-doc-id>
 
 Save the full output. This is the format reference only — not a content source.
 
-**Analyze the FORMAT only:**
-- Heading hierarchy pattern (depth, naming conventions)
-- Section organization template
-- Formatting conventions (when bold is used, list styles, etc.)
-- Content density and paragraph structure
-- Use of structural elements (dividers, quotes, code blocks)
+**Analyze the FORMAT only:** heading hierarchy, section organization, formatting conventions (bold, lists), content density, structural elements (dividers, quotes, code blocks).
 
 ### Task 3: Format Analysis
 
@@ -200,16 +166,16 @@ Read [`references/optimization-guide.md`](<skill-directory>/references/optimizat
 
 Check the source document against these specific format conventions:
 
-| Convention | Expected Pattern | Source Status |
-|------------|-----------------|---------------|
-| Opening callout | `[!callout]` with description + paper/repo links | Present? Missing? |
-| Numbered headings | `## 1 标题` / `### 1.1 子标题` | Correct numbering? Duplicates? |
-| Heading groups | Continuous numbering across whole doc | Multiple `## 1` resets? |
-| Level conflicts | Group/chapter titles at correct level vs. sub-items | Any group title at same level as children? |
-| Callouts/quotes | `\|>` / `[!callout]` / `> 📌` freely throughout | Enough callouts? |
-| Code block tags | Language tag on every code block | Any bare ` ``` `? |
-| Bold key terms | First mention of important technical terms bolded | Applied? |
-| Inline emphasis | `{red:...}` for key points; `{green:...}` for key terms | Enough emphasis? |
+| Convention | Expected Pattern |
+|------------|-----------------|
+| Opening callout | `[!callout]` with description + paper/repo links |
+| Numbered headings | `## 1 标题` / `### 1.1 子标题` |
+| Heading groups | Continuous numbering across whole doc |
+| Level conflicts | Group/chapter titles at correct level vs. sub-items |
+| Callouts/quotes | `\|>` / `[!callout]` / `> 📌` freely throughout |
+| Code block tags | Language tag on every code block |
+| Bold key terms | First mention of important technical terms bolded |
+| Inline emphasis | `{red:...}` for key points; `{green:...}` for key terms |
 
 **Hard Constraints:**
 - Do **not** assume numbered headings are mandatory when the source already has a coherent hierarchy
@@ -240,37 +206,11 @@ Review the source document for issues that should be fixed regardless of format:
 
 ### Task 4.5: Mermaid Diagram (Best-Effort)
 
-Read [`references/mermaid-guide.md`](<skill-directory>/references/mermaid-guide.md) for patterns, rules, and examples.
+Read [`references/mermaid-guide.md`](<skill-directory>/references/mermaid-guide.md) for patterns, rules, and placement examples.
 
-**Decision**: does this document benefit from a diagram?
+**Decision**: does this document benefit from a diagram? Generate one mermaid block (placed after the opening callout, before the first heading) if the document describes a multi-stage pipeline, system architecture, branching algorithm, or process flow. Skip for reference tables, FAQs, catalogs, or docs with no flow structure. When in doubt, skip — a bad diagram is worse than no diagram.
 
-- **Yes** → generate one mermaid block, place it immediately after the opening callout (before the first heading)
-- **No** → skip silently, do not mention it to the user
-
-The pipeline handles all visual styling automatically (subgraph colors, endpoint fills, edge label backgrounds). You only write the structure.
-
-**Quick fit test** — generate a diagram if the document describes:
-- A multi-stage pipeline or workflow
-- A system architecture with components and data flow
-- An algorithm with branching decisions
-- A process with clear start → steps → end
-
-**Skip if** the document is a reference table, FAQ, catalog, or has no flow structure. When in doubt, skip — a bad diagram is worse than no diagram.
-
-**Format:**
-
-````markdown
-<callout ...>
-...
-</callout>
-
-```mermaid
-graph TD
-    ...
-```
-
-## 1 First Section
-````
+The pipeline handles all visual styling automatically. You only write the structure.
 
 ---
 
@@ -290,7 +230,7 @@ The optimized document should be **80%+ identical** to the original. Changes sho
    - Put the document's intro/summary description inside, closed with `</callout>`
    - If the source already has an intro paragraph, blockquote, or summary section that describes the document, reuse or lightly optimize that content as the callout body — do not invent new summary text
    - If no such content exists, synthesize a 1–3 sentence summary from the document's main topic and scope
-   - **Pipeline safety net**: For narrative docs, if you forget the callout, the pipeline will auto-inject one from the first paragraph. However, explicitly writing it gives you control over the content and emoji. Do not rely on this fallback — always write it.
+   - **Pipeline safety net**: Pipeline auto-injects from first paragraph as fallback — always write explicitly for control over content and emoji.
 
 2. **Heading restructuring** — Fix numbering AND hierarchy when needed:
    - Apply **continuous sequential numbering**: `## 1`, `## 2`… for top-level; `### 1.1`, `### 1.2`… for second-level
@@ -309,42 +249,22 @@ The optimized document should be **80%+ identical** to the original. Changes sho
      - Inline code: `` {green:`code`} `` → renders green code
    - **CRITICAL — convert raw `<text color>` tags from fetched docs**: Raw `<text color="green">BF16</text>` HTML from fetched documents does NOT render in uploaded docs — it appears as plain text. During optimization, convert every `<text color="COLOR">CONTENT</text>` to its shorthand form: `{green:CONTENT}`, `{red:CONTENT}`, etc. If the content has bold, place bold inside: `{green:**CONTENT**}`. Never preserve the raw `<text color>` form in the optimized output.
    - **Preserve all existing emphasis**: Every `{red:...}`, `{green:...}`, and `**bold**` in the source document MUST be carried over to the optimized version. Add new emphasis on top; never remove original emphasis.
-   - **CRITICAL — bold placement**: Write `{red:**bold conclusion**}` (bold INSIDE), NEVER `**{red:conclusion}**` (bold OUTSIDE). Bold outside a color tag causes lark-cli to fragment the text into multiple spans.
-   - **CRITICAL — formulas in headings**: Never put `$formula$` in a heading title — lark-cli does not render equations in headings. Use a plain text description instead.
-   - **CRITICAL — bold near equations**: Do not wrap `**` directly around `$formula$` boundaries. Write `**text** $formula$`, not `**text $formula$**`.
+   - **CRITICAL rendering rules**: Bold INSIDE color tags (`{red:**text**}`, never `**{red:text}**`). No `$formula$` in headings. No `**` wrapping `$formula$` boundaries. See optimization-guide § "Rendering Pitfalls" for full patterns.
 
 4. **Add in-line callouts** — Insert markdown blockquotes for key insights throughout the document body:
    - Use `> 📌 **标题**: ...` for key insights
    - Use `> 📚 **背景**: ...` for background knowledge
    - Target: 5-15 such blockquotes throughout a long document
-   - These are **markdown blockquotes**, NOT `<callout>` XML blocks — they render as styled quotes in Feishu, distinct from the opening `<callout>` element.
-   - **Pipeline auto-conversion**: Blockquotes matching `TL;DR`, `核心思想`, `关键结论`, `一句话总结`, `核心区别` etc. are automatically converted by the pipeline to `<callout>` XML (blue/green/yellow). Do not manually write `<callout>` XML for these patterns — write them as `> TL;DR: ...` and let the pipeline convert them. This avoids accidental nesting.
+   - **Pipeline auto-conversion**: Blockquotes matching `TL;DR`, `核心思想`, `关键结论`, `一句话总结`, `核心区别` etc. are auto-converted to `<callout>` XML. Do not manually write `<callout>` XML for these — write `> TL;DR: ...` and let the pipeline convert.
    - **CRITICAL — no emoji prefix inside `<callout>` XML body**: When writing a `<callout>` XML block directly, do NOT start the body text with an emoji (📌, 💡, 📚, etc.). The `emoji=` attribute on the opening tag already provides the icon — adding an emoji in the body text creates a redundant double-icon display. Only the `> 📌 **Title**: ...` blockquote syntax (auto-converted by pipeline) needs the emoji prefix.
    - **CRITICAL — no nested `<callout>` XML**: Lark does not render a `<callout>` XML block nested inside another `<callout>` XML block. If the source document contains this pattern, convert the inner `<callout>` block to plain paragraphs (strip the opening/closing XML tags, keep the text). Markdown blockquotes (`> ...`) inside a `<callout>` body are fine and are NOT nested callouts.
 
-5. **Fix code blocks** — Add language tags if missing. Note: for narrative docs, the pipeline auto-tags common languages (python, bash, nginx, yaml, json, go, typescript, etc.) — you only need to add tags for languages the pipeline doesn't recognize.
+5. **Fix code blocks** — Add language tags if missing.
 6. **Fix factual errors** — Correct typos, broken links, wrong information
-7. **Preserve images and embedded content** — If the source document contains `<image token="...">` tags (Feishu-hosted images), copy them verbatim into the optimized version at their original position. Do NOT drop or replace them with placeholder text. Losing images is a content regression.
-8. **Preserve existing tables** — If the source has a `<lark-table>` block, copy it through unchanged (or restructure it in plain markdown if restructuring is needed). Do NOT emit `|lark-table rows="N" ...|` (pipe-wrapped lark-table tag) — that is not valid syntax. Write either valid `<lark-table>` XML or a standard markdown table.
-   - **CRITICAL — lark-table cell content**: Inside `<lark-td>` blocks, be aware of these lark-cli behaviors:
-     - **`#` at line start**: lark-cli creates a heading even inside cells and callouts. Do NOT manually escape to `\#` (renders as literal `\#` with backslash). The pipeline automatically inserts an invisible zero-width space (ZWSP) before `#` to prevent heading rendering — no manual intervention needed.
-     - **`***bold-italic***` with underscored content** (e.g. `***sm__throughput***`): lark-cli's markdown parser misinterprets `_` inside `***...**` and strips bold, leaving only `*italic*`. This is a **lark-cli limitation with no workaround via markdown**. For metric names with underscores, use backtick code format instead: `` `sm__throughput` ``. Bold-only (`**...**`) and italic-only (`*...*`) work fine with underscores.
-     - Preserve the full marker set from the source. If converting to another form (e.g. inline code), do so explicitly, but never silently drop formatting.
-9. **Preserve `<equation>` tags verbatim** — If the source contains `<equation>...</equation>` blocks, copy the ENTIRE tag (including all LaTeX content) verbatim. Do NOT:
-   - Rewrite `<equation>` as `$...$` notation
-   - Split the formula between `<equation>` tags and surrounding plain text
-   - Write LaTeX subscripts (`_{\text{...}}`) OUTSIDE of `$...$` or `<equation>` delimiters — bare `_` in markdown becomes italic (`*`) and breaks rendering
-   - Use markdown `_italic_` for LaTeX subscripts; always wrap complete formulas in `$...$` or `<equation>`
-
-   **Multi-subscript limitation (lark-cli bug)**: Formulas with two or more `_{...}` subscripts break because lark-cli processes `_` as markdown italic INSIDE `<equation>`. If a formula has 2+ subscripts that use `_{...}` (brace follows `_`), use single-char subscripts without braces instead: `_p`, `_h`, `_e` etc. Single `_` per formula using `_{\text{...}}` is safe.
-
-   **Pattern that MUST be preserved exactly**: if source has `<equation>\text{Formula}_{\text{active}} = \frac{...}{...} \times 100\%</equation>` (single subscript), output it unchanged. For multi-subscript formulas, simplify subscript notation.
-
-10. **`<quote-container>` handling** — Fetched Feishu documents may contain `<quote-container>...</quote-container>` blocks (lark-cli's XML representation of QuoteContainer blocks). lark-cli's upload path does NOT support `<quote-container>` — it silently drops the block. The pipeline converts them automatically based on context:
-    - **Inside `<lark-table>`**: → `<callout>` (grey) — blockquotes don't work in table cells
-    - **Outside `<lark-table>`**: → blockquote `>` (native markdown)
-    
-    When writing optimized content, you do NOT need to convert `<quote-container>` manually — the pipeline handles it. If you see `<quote-container>` in a fetched source, you may either leave it as-is (pipeline converts) or manually convert to the appropriate form.
+7. **Preserve images, tables, equations verbatim** — Copy `<image token>`, `<lark-table>`, `<equation>` tags unchanged at their original positions. Do not rewrite `<equation>` as `$...$`. Do not emit pipe-wrapped `|lark-table ...|` — use `<lark-table>` XML or standard markdown tables. See [`references/optimization-guide.md`](<skill-directory>/references/optimization-guide.md) § "Verified Syntax Reference" for full correct/incorrect patterns.
+   - **CRITICAL — equations**: Never write bare LaTeX subscripts (`_{\text{...}}`) outside `$...$` or `<equation>` delimiters — bare `_` becomes italic. Multi-subscript bug: 2+ `_{...}` in one formula breaks (lark-cli pairs `_` as italic). Workaround: use single-char subscripts without braces (`_p`, `_h`). Single `_{...}` per formula is safe.
+   - **CRITICAL — lark-table cells**: `***bold-italic***` with underscored content (e.g. `***sm__throughput***`) breaks — lark-cli misinterprets `_` inside `***`. Use backtick code format (`` `sm__throughput` ``) for metric names with underscores.
+8. **`<quote-container>` handling** — lark-cli upload does NOT support `<quote-container>` (silently drops). Pipeline auto-converts: → blockquote (outside tables) / `<callout>` grey (inside tables). Leave as-is or convert manually.
 
 #### What NOT to change:
 

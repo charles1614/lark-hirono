@@ -17,10 +17,48 @@ Copy a Feishu wiki subtree from one location to another, preserving all content 
 1. **Global install** — `lark-hirono sync [options]`
 2. **Local dev repo** — `npx tsx bin/lark-hirono.ts sync [options]`
 
-## Prerequisites
+## First-Time Setup
 
-- Node.js 20+, `lark-cli` >= 1.0.9 with authentication
-- Playwright + Chromium (for image transfer when API returns 403)
+Run these steps once before first use.
+
+### 1. Install lark-hirono and authenticate
+
+Follow the "First-Time Setup" steps in the main `lark-hirono` skill (install lark-hirono → install lark-cli → `lark-cli config init` → `lark-hirono auth login --domain docs`).
+
+### 2. Install Playwright + Chromium (required for cross-space images)
+
+Cross-space image downloads via the Feishu API return 403. The sync command uses Playwright with browser session cookies to download images through Feishu's internal CDN instead. Without Playwright, **sync still runs but all cross-space images are silently skipped** — you get documents with missing images.
+
+Playwright is declared as an `optionalDependency` in package.json. If it wasn't installed automatically:
+
+```bash
+npm install playwright
+npx playwright install chromium
+```
+
+### 3. Browser login for image transfer
+
+On first sync with images, Playwright launches a **visible browser window** pointing to Feishu. Log in manually. After login, the session is saved to `~/.config/lark-hirono/browser-state.json` and reused headlessly for subsequent runs.
+
+**Requirements:**
+- A display environment (desktop or X11 forwarding) — the first run needs a visible browser. This will **not work over plain SSH or in CI** without a display.
+- After the first login, subsequent runs are headless and work without a display.
+
+### Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `playwright not installed` error mid-sync | Playwright not in node_modules | `npm install playwright && npx playwright install chromium` |
+| `Cannot launch browser (need display)` | No display (SSH/CI) | Run the first sync from a desktop environment, or copy a valid `browser-state.json` from another machine |
+| Images missing after sync (no errors) | Browser session expired | Delete `~/.config/lark-hirono/browser-state.json` and re-run to trigger a fresh login |
+| All images fail after first failure | `_browserFailed` flag set for process lifetime | Fix the underlying browser issue and re-run the sync command |
+| Images fail silently with only verbose log | Per-image errors are caught and logged, sync continues | Run with `-v` to see which images failed and why |
+
+### Prerequisites Summary
+
+- Node.js 20+, `lark-cli` >= 1.0.9 (installed and authenticated)
+- Playwright + Chromium (required for cross-space images; without it sync works but images are skipped)
+- Display environment for first browser login (subsequent runs are headless)
 
 ## Usage
 

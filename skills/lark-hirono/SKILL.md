@@ -39,11 +39,70 @@ Determine the correct invocation **once** at the start of each session, trying e
 
 All examples below use `lark-hirono` as shorthand — substitute the resolved command.
 
-## Prerequisites
+## First-Time Setup
+
+Run these steps once before first use. Each step is a prerequisite for the next.
+
+### 1. Install lark-hirono
+
+```bash
+npm install -g lark-hirono
+```
+
+### 2. Install lark-cli
+
+`lark-hirono` calls the `lark-cli` binary (>= 1.0.9) as a subprocess for all Feishu API operations. If it's not already installed:
+
+```bash
+mkdir -p /tmp/larkcli && cd /tmp/larkcli
+npm init -y && npm install @larksuite/cli
+node node_modules/@larksuite/cli/scripts/install.js
+```
+
+Or set the `LARK_CLI` environment variable to point to an existing `lark-cli` binary.
+
+Verify installation:
+
+```bash
+lark-cli --version   # should print >= 1.0.9
+```
+
+### 3. Configure lark-cli
+
+Initialize the app credentials that lark-cli uses to call Feishu APIs:
+
+```bash
+lark-cli config init
+```
+
+This is an interactive setup — follow the prompts to provide your Feishu app ID and secret. For details on app setup and scopes, see the `lark-shared` skill (`lark-cli config init` / `lark-cli auth login`).
+
+### 4. Authenticate
+
+```bash
+lark-hirono auth login --domain docs
+# or equivalently: lark-cli auth login --domain docs
+```
+
+This opens a browser for Feishu OAuth. After login, the token is cached by lark-cli (typically in `~/.config/lark/`).
+
+Verify auth:
+
+```bash
+lark-hirono auth status
+```
+
+If the token has expired, re-run `auth login`.
+
+### 5. Optional config file
+
+Create `lark-hirono.json` in your project directory for defaults (wiki space, node, background mode). This file is optional — all values can be passed as CLI flags instead.
+
+### Prerequisites Summary
 
 - Node.js 20+
+- `lark-cli` >= 1.0.9 (installed and authenticated)
 - `lark-hirono.json` config file (optional, for wiki-space/wiki-node defaults)
-- Feishu authentication (via `lark-cli`)
 
 ## Data Locations
 

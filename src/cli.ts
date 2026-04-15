@@ -345,6 +345,19 @@ export class LarkCli {
     return (data?.children as Record<string, unknown>[]) ?? null;
   }
 
+  /** Update text elements of a block. */
+  updateBlockElements(
+    docId: string,
+    blockId: string,
+    elements: Record<string, unknown>[]
+  ): boolean {
+    const path = `/open-apis/docx/v1/documents/${docId}/blocks/${blockId}?document_revision_id=-1`;
+    const result = this.run(["api", "PATCH", path, "--data", JSON.stringify({
+      update_text_elements: { elements },
+    })], 30_000);
+    return result !== null && result.code === 0;
+  }
+
   /** Fetch a single block by ID. */
   getBlock(docId: string, blockId: string): Record<string, unknown> | null {
     const result = this.run([

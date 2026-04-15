@@ -8,6 +8,7 @@
 import { execSync } from "node:child_process";
 import { copyDocBlocks, cleanupEmptyTails, computeHeadingNumbers } from "./block-copy.js";
 import { prefetchImages, closeBrowser } from "../browser/image-transfer.js";
+import type { RefMaps } from "./fix-refs.js";
 import type { WikiClient } from "./wiki-client.js";
 import type { WikiNode, SyncNodeResult, SyncOptions } from "./wiki-types.js";
 
@@ -22,6 +23,7 @@ export async function syncTree(
   targetParentToken: string,
   targetSpaceId: string,
   opts: SyncOptions,
+  refs?: RefMaps,
 ): Promise<SyncNodeResult[]> {
   const children = wikiClient.listChildren(
     sourceNode.spaceId,
@@ -45,7 +47,7 @@ export async function syncTree(
         printDryRunNode(child, prefix);
         if (child.hasChild) {
           const subResults = await syncTree(
-            wikiClient, child, "", targetSpaceId, opts,
+            wikiClient, child, "", targetSpaceId, opts, refs,
           );
           results.push({
             sourceToken: child.nodeToken, targetToken: null,
@@ -61,7 +63,7 @@ export async function syncTree(
       }
 
       const result = await syncNode(
-        wikiClient, child, targetParentToken, targetSpaceId, opts, prefix,
+        wikiClient, child, targetParentToken, targetSpaceId, opts, prefix, refs,
       );
       results.push(result);
       sleep(500);
@@ -106,6 +108,7 @@ async function syncNode(
   targetSpaceId: string,
   opts: SyncOptions,
   prefix: string,
+  refs?: RefMaps,
 ): Promise<SyncNodeResult> {
   console.log(`${prefix} Copying: "${sourceNode.title}" (${sourceNode.objType || "node"})…`);
 
@@ -142,7 +145,7 @@ async function syncNode(
       console.error(`${prefix}   FAIL: could not create placeholder`);
     }
     const childResults = sourceNode.hasChild && pToken
-      ? await syncTree(wikiClient, sourceNode, pToken, targetSpaceId, opts)
+      ? await syncTree(wikiClient, sourceNode, pToken, targetSpaceId, opts, refs)
       : [];
     return {
       sourceToken: sourceNode.nodeToken, targetToken: pToken,
@@ -167,6 +170,13 @@ async function syncNode(
 
   const targetObjToken = newNode.objToken;
   console.log(`${prefix}   Created node → ${newNode.nodeToken}`);
+
+  // Populate reference maps for post-copy fixup
+  if (refs) {
+    refs.nodeMap.set(sourceNode.nodeToken, newNode.nodeToken);
+    refs.objMap.set(sourceNode.objToken, targetObjToken);
+    refs.docMap.set(newNode.nodeToken, targetObjToken);
+  }
 
   // Fetch source blocks
   const sourceBlocks = wikiClient.cli.getBlocks(sourceNode.objToken);
@@ -211,7 +221,7 @@ async function syncNode(
 
   // Recurse into children
   const childResults = sourceNode.hasChild
-    ? await syncTree(wikiClient, sourceNode, newNode.nodeToken, targetSpaceId, opts)
+    ? await syncTree(wikiClient, sourceNode, newNode.nodeToken, targetSpaceId, opts, refs)
     : [];
 
   console.log(`${prefix}   OK (block-copy)`);

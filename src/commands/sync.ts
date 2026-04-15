@@ -11,6 +11,7 @@ import { LarkCli } from "../cli.js";
 import { WikiClient } from "../wiki/wiki-client.js";
 import { parseWikiUrl } from "../wiki/wiki-url.js";
 import { syncTree, printTree, printSummary } from "../wiki/sync.js";
+import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
 import type { SyncOptions } from "../wiki/wiki-types.js";
 
 export async function run(args: string[]): Promise<number> {
@@ -97,9 +98,21 @@ export async function run(args: string[]): Promise<number> {
   }
 
   console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
+
+  const refs: RefMaps = {
+    nodeMap: new Map(),
+    objMap: new Map(),
+    docMap: new Map(),
+  };
+
   const results = await syncTree(
-    wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts,
+    wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts, refs,
   );
+
+  // Fix internal document references
+  if (refs.docMap.size > 0) {
+    fixupReferences(cli, refs, { verbose });
+  }
 
   printSummary(results);
 

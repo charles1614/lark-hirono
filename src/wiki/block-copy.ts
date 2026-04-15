@@ -27,6 +27,8 @@ export type ImageCache = Map<string, ImageData>;
 export interface CopyResult {
   created: number;
   skipped: number;
+  /** Unsupported block types encountered: block_type → count */
+  unsupportedTypes: Map<number, number>;
 }
 
 type Block = Record<string, unknown>;
@@ -44,6 +46,25 @@ const CONTENT_KEY: Record<number, string> = {
   16: "equation", 17: "todo", 18: "table", 19: "callout",
   22: "divider", 24: "grid", 25: "grid_column", 27: "image",
   31: "table", 32: "table_cell", 34: "quote_container",
+};
+
+/** Human-readable names for all known Feishu docx block types. */
+export const BLOCK_TYPE_NAME: Record<number, string> = {
+  1: "page",
+  2: "text", 3: "heading1", 4: "heading2", 5: "heading3",
+  6: "heading4", 7: "heading5", 8: "heading6",
+  9: "heading7", 10: "heading8", 11: "heading9",
+  12: "bullet", 13: "ordered", 14: "code", 15: "quote",
+  16: "equation", 17: "todo", 18: "table_legacy", 19: "callout",
+  20: "chat_group", 21: "diagram", 22: "divider",
+  23: "mindnote", 24: "grid", 25: "grid_column",
+  26: "file", 27: "image", 28: "view",
+  31: "table", 32: "table_cell", 33: "synced_block",
+  34: "quote_container", 35: "add_ons",
+  36: "jira", 37: "wiki_catalog",
+  38: "task", 39: "okr", 40: "okr_objective",
+  41: "okr_key_result", 42: "okr_progress",
+  999: "undefined_internal",
 };
 
 const BATCH_SIZE = 10;
@@ -282,11 +303,12 @@ export function copyDocBlocks(
   if (!root) throw new Error("No root block in source document");
 
   const rootChildren = root.children as string[] | undefined;
-  if (!rootChildren || rootChildren.length === 0) return { created: 0, skipped: 0 };
+  if (!rootChildren || rootChildren.length === 0) return { created: 0, skipped: 0, unsupportedTypes: new Map() };
 
   const queue: QueueItem[] = [[rootChildren, targetDocId]];
   let totalCreated = 0;
   let totalSkipped = 0;
+  const unsupportedTypes = new Map<number, number>();
 
   while (queue.length > 0) {
     const next: QueueItem[] = [];
@@ -301,7 +323,15 @@ export function copyDocBlocks(
         if (!s) continue;
         const bt = s.block_type as number;
         if (bt !== 1 && !(bt in CONTENT_KEY)) {
-          expandedIds.push(...((s.children as string[]) ?? []));
+          const children = (s.children as string[]) ?? [];
+          const name = BLOCK_TYPE_NAME[bt] ?? `unknown(${bt})`;
+          unsupportedTypes.set(bt, (unsupportedTypes.get(bt) ?? 0) + 1);
+          if (children.length > 0) {
+            expandedIds.push(...children);
+            if (opts?.verbose) console.log(`    ⚠ Unsupported block type ${bt} (${name}): promoting ${children.length} children`);
+          } else {
+            if (opts?.verbose) console.log(`    ⚠ Unsupported block type ${bt} (${name}): dropped (no children, content lost)`);
+          }
         } else {
           expandedIds.push(cid);
         }
@@ -363,7 +393,7 @@ export function copyDocBlocks(
     queue.push(...next);
   }
 
-  return { created: totalCreated, skipped: totalSkipped };
+  return { created: totalCreated, skipped: totalSkipped, unsupportedTypes };
 }
 
 /** Post-creation: upload images, expand tables, queue children. */

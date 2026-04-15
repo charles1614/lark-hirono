@@ -6,7 +6,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { copyDocBlocks, cleanupEmptyTails, computeHeadingNumbers } from "./block-copy.js";
+import { copyDocBlocks, cleanupEmptyTails, computeHeadingNumbers, BLOCK_TYPE_NAME } from "./block-copy.js";
 import { prefetchImages, closeBrowser } from "../browser/image-transfer.js";
 import type { RefMaps } from "./fix-refs.js";
 import type { WikiClient } from "./wiki-client.js";
@@ -210,6 +210,14 @@ async function syncNode(
   if (result.skipped > 0) {
     console.log(`${prefix}   ${result.skipped} blocks skipped`);
   }
+  if (result.unsupportedTypes.size > 0) {
+    const parts: string[] = [];
+    for (const [bt, count] of result.unsupportedTypes) {
+      const name = BLOCK_TYPE_NAME[bt] ?? `unknown`;
+      parts.push(`${name}(${bt})×${count}`);
+    }
+    console.log(`${prefix}   ⚠ Unsupported block types: ${parts.join(", ")}`);
+  }
 
   // Cleanup auto-created empty tails
   try {
@@ -228,6 +236,7 @@ async function syncNode(
   return {
     sourceToken: sourceNode.nodeToken, targetToken: newNode.nodeToken,
     title: sourceNode.title, strategy: "block-copy", ok: true,
+    unsupportedTypes: result.unsupportedTypes.size > 0 ? result.unsupportedTypes : undefined,
     children: childResults,
   };
 }
@@ -250,6 +259,7 @@ export function printSummary(results: SyncNodeResult[]): void {
   let blockCopy = 0;
   let skipped = 0;
   let failed = 0;
+  const allUnsupported = new Map<number, number>();
 
   function count(list: SyncNodeResult[]): void {
     for (const r of list) {
@@ -257,6 +267,11 @@ export function printSummary(results: SyncNodeResult[]): void {
       else if (r.strategy === "server-copy") copied++;
       else if (r.strategy === "block-copy") blockCopy++;
       else skipped++;
+      if (r.unsupportedTypes) {
+        for (const [bt, n] of r.unsupportedTypes) {
+          allUnsupported.set(bt, (allUnsupported.get(bt) ?? 0) + n);
+        }
+      }
       count(r.children);
     }
   }
@@ -268,4 +283,12 @@ export function printSummary(results: SyncNodeResult[]): void {
   if (skipped > 0) console.log(`  Skipped:       ${skipped}`);
   if (failed > 0) console.log(`  Failed:        ${failed}`);
   console.log(`  Total:         ${copied + blockCopy + skipped + failed}`);
+
+  if (allUnsupported.size > 0) {
+    console.log("\n  ⚠ Unsupported block types (content may be lost):");
+    for (const [bt, n] of [...allUnsupported.entries()].sort((a, b) => a[0] - b[0])) {
+      const name = BLOCK_TYPE_NAME[bt] ?? "unknown";
+      console.log(`    - ${name} (type ${bt}): ${n} block(s)`);
+    }
+  }
 }

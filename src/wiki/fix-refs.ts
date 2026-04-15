@@ -29,7 +29,8 @@ const CONTENT_KEY: Record<number, string> = {
   6: "heading4", 7: "heading5", 8: "heading6",
   9: "heading7", 10: "heading8", 11: "heading9",
   12: "bullet", 13: "ordered", 14: "code", 15: "quote",
-  16: "equation", 17: "todo", 19: "callout",
+  16: "equation", 17: "todo", 18: "table", 19: "callout",
+  34: "quote_container",
 };
 
 // ─── URL Remapping ──────────────────────────────────────────────────────

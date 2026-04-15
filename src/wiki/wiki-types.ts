@@ -20,6 +20,8 @@ export interface SyncNodeResult {
   strategy: "server-copy" | "block-copy" | "skipped";
   ok: boolean;
   error?: string;
+  /** Unsupported block types encountered: block_type → count */
+  unsupportedTypes?: Map<number, number>;
   children: SyncNodeResult[];
 }
 

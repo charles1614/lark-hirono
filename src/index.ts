@@ -9,3 +9,6 @@ export { highlightExtract, highlightApply, saveBatches, type TitleEntry, type Ke
 export { processImages, extractImageRefs } from "./image/images.js";
 export { verifyDoc, formatReport } from "./verify/verify.js";
 export { LarkCli, type AuthStatus, type ApiResult, type CliOptions } from "./cli.js";
+export { WikiClient } from "./wiki/wiki-client.js";
+export { parseWikiUrl, type ParsedWikiUrl } from "./wiki/wiki-url.js";
+export type { WikiNode, SyncNodeResult, SyncOptions } from "./wiki/wiki-types.js";

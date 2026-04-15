@@ -22,6 +22,7 @@ import * as analyze from "../src/commands/analyze.js";
 import * as highlight from "../src/commands/highlight.js";
 import * as verify from "../src/commands/verify.js";
 import * as auth from "../src/commands/auth.js";
+import * as sync from "../src/commands/sync.js";
 
 const COMMANDS = {
   upload,
@@ -31,6 +32,7 @@ const COMMANDS = {
   highlight,
   verify,
   auth,
+  sync,
 } as const;
 
 type CommandName = keyof typeof COMMANDS;
@@ -50,6 +52,7 @@ Commands:
   highlight <subcommand>  Extract/apply keyword highlights
   verify --doc <id>       Fetch and verify an existing document
   auth <subcommand>       Feishu authentication (passthrough to lark-cli)
+  sync --from --to       Recursively copy wiki subtree to target location
 
 Options:
   -h, --help     Show help for a command

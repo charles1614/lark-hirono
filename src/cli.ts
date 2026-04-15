@@ -331,6 +331,30 @@ export class LarkCli {
     return result !== null && result.code === 0;
   }
 
+  /** Insert block children and return the created blocks with their new IDs. */
+  createBlockChildrenEx(
+    docId: string,
+    parentBlockId: string,
+    children: Record<string, unknown>[],
+    index: number
+  ): Record<string, unknown>[] | null {
+    const path = `/open-apis/docx/v1/documents/${docId}/blocks/${parentBlockId}/children`;
+    const result = this.post(path, { children, index });
+    if (!result || result.code !== 0) return null;
+    const data = result.data as Record<string, unknown> | undefined;
+    return (data?.children as Record<string, unknown>[]) ?? null;
+  }
+
+  /** Fetch a single block by ID. */
+  getBlock(docId: string, blockId: string): Record<string, unknown> | null {
+    const result = this.run([
+      "api", "GET",
+      `/open-apis/docx/v1/documents/${docId}/blocks/${blockId}`,
+    ], 30_000);
+    if (!result?.data) return null;
+    return (result.data as Record<string, unknown>).block as Record<string, unknown> | null;
+  }
+
   /** PATCH a block with arbitrary payload. */
   patchBlock(
     docId: string,

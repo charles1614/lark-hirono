@@ -18,6 +18,8 @@ export interface SyncState {
   targetRoot: string;
   lastSyncTime: string;
   rootContentHash: string;
+  /** objEditTime of the root node at last sync, for fast change detection */
+  rootObjEditTime?: string;
   pages: Record<string, PageState>;
 }
 
@@ -106,6 +108,7 @@ export function buildInitialState(
   sourceRoot: string,
   targetRoot: string,
   rootContentHash: string,
+  rootObjEditTime?: string,
 ): SyncState {
   return {
     version: 1,
@@ -113,6 +116,7 @@ export function buildInitialState(
     targetRoot,
     lastSyncTime: new Date().toISOString(),
     rootContentHash,
+    rootObjEditTime: rootObjEditTime ?? "",
     pages: {},
   };
 }

@@ -27,6 +27,12 @@ export interface SyncNodeResult {
   unsupportedTypes?: Map<number, number>;
   /** Images that failed to download or upload */
   failedImages?: FailedImage[];
+  /** Content hash computed during sync (avoids re-fetch on state recording) */
+  contentHash?: string;
+  /** Source obj token for state recording without extra API calls */
+  sourceObjToken?: string;
+  /** Target obj token for state recording without extra API calls */
+  targetObjToken?: string;
   children: SyncNodeResult[];
 }
 

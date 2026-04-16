@@ -10,12 +10,12 @@
 import { LarkCli } from "../cli.js";
 import { WikiClient } from "../wiki/wiki-client.js";
 import { parseWikiUrl } from "../wiki/wiki-url.js";
-import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary } from "../wiki/sync.js";
+import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary, recordResultsInState } from "../wiki/sync.js";
+import { closeBrowser } from "../browser/image-transfer.js";
 import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
 import { loadState, saveState, buildInitialState, computeContentHash } from "../wiki/sync-state.js";
 import type { FailedImage } from "../wiki/block-copy.js";
 import type { SyncOptions, SyncNodeResult } from "../wiki/wiki-types.js";
-import type { SyncState } from "../wiki/sync-state.js";
 
 export async function run(args: string[]): Promise<number> {
   const flags: Record<string, string | boolean> = {};
@@ -124,50 +124,67 @@ export async function run(args: string[]): Promise<number> {
   let results: SyncNodeResult[];
   let rootFailedImages: FailedImage[] = [];
 
-  if (existingState) {
-    // ── Incremental sync ───────────────────────────────────────────
-    console.log(`\nIncremental sync "${sourceNode.title}" → "${targetNode.title}"…`);
-    console.log(`  (last synced: ${existingState.lastSyncTime})\n`);
+  try {
+    if (existingState) {
+      // ── Incremental sync ───────────────────────────────────────────
+      console.log(`\nIncremental sync "${sourceNode.title}" → "${targetNode.title}"…`);
+      console.log(`  (last synced: ${existingState.lastSyncTime})\n`);
 
-    results = await syncTreeIncremental(
-      wikiClient, sourceNode, targetNode, existingState, opts, refs,
-    );
+      results = await syncTreeIncremental(
+        wikiClient, sourceNode, targetNode, existingState, opts, refs,
+        () => saveState(existingState),
+      );
 
-    // Fix internal document references
-    if (refs.docMap.size > 0) {
-      fixupReferences(cli, refs, { verbose });
+      // Fix internal document references
+      // docMap contains new/modified pages; also add all known unchanged pages
+      // so fixupReferences can scan them for links to newly-synced pages
+      if (refs.docMap.size > 0) {
+        // Include root page so its outbound links are also scanned
+        if (targetNode.objToken) {
+          refs.docMap.set(targetNode.nodeToken, targetNode.objToken);
+        }
+        for (const page of Object.values(existingState.pages)) {
+          if (!refs.docMap.has(page.targetNodeToken) && page.targetObjToken) {
+            refs.docMap.set(page.targetNodeToken, page.targetObjToken);
+          }
+        }
+        fixupReferences(cli, refs, { verbose });
+      }
+
+      // Save updated state
+      saveState(existingState);
+    } else {
+      // ── First-run: full copy ───────────────────────────────────────
+      console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
+
+      // Mirror root page content (source → target)
+      const rootResult = await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
+      rootFailedImages = rootResult.failedImages;
+
+      results = await syncTree(
+        wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts, refs,
+      );
+
+      // Fix internal document references
+      if (refs.docMap.size > 0) {
+        fixupReferences(cli, refs, { verbose });
+      }
+
+      // Build and save initial state
+      const rootBlocks = sourceNode.objType === "docx"
+        ? cli.getBlocks(sourceNode.objToken) : [];
+      const state = buildInitialState(
+        sourceNode.nodeToken,
+        targetNode.nodeToken,
+        computeContentHash(rootBlocks),
+        sourceNode.objEditTime,
+      );
+      // Record all successfully synced pages
+      recordResultsInState(state, results, refs, wikiClient);
+      saveState(state);
     }
-
-    // Save updated state
-    saveState(existingState);
-  } else {
-    // ── First-run: full copy ───────────────────────────────────────
-    console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
-
-    // Mirror root page content (source → target)
-    const rootResult = await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
-    rootFailedImages = rootResult.failedImages;
-
-    results = await syncTree(
-      wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts, refs,
-    );
-
-    // Fix internal document references
-    if (refs.docMap.size > 0) {
-      fixupReferences(cli, refs, { verbose });
-    }
-
-    // Build and save initial state
-    const rootBlocks = sourceNode.objType === "docx"
-      ? cli.getBlocks(sourceNode.objToken) : [];
-    const state = buildInitialState(
-      sourceNode.nodeToken,
-      targetNode.nodeToken,
-      computeContentHash(rootBlocks),
-    );
-    // Record all successfully synced pages
-    recordResultsInState(state, results, refs, wikiClient);
-    saveState(state);
+  } finally {
+    await closeBrowser();
   }
 
   printSummary(results, rootFailedImages);
@@ -180,45 +197,6 @@ export async function run(args: string[]): Promise<number> {
   });
 
   return anyFailed || anyImagesFailed ? 1 : 0;
-}
-
-/** Walk sync results and populate state.pages with the mapping. */
-function recordResultsInState(
-  state: SyncState,
-  results: SyncNodeResult[],
-  refs: RefMaps,
-  wikiClient: WikiClient,
-): void {
-  for (const r of results) {
-    if (r.ok && r.targetToken && r.strategy !== "skipped") {
-      // Resolve obj tokens from refs or by fetching the node
-      const targetObjToken = refs.docMap.get(r.targetToken) ?? "";
-      const sourceObjToken = refs.objMap.has(r.sourceToken)
-        ? r.sourceToken  // sourceToken is a node token, need to find obj token
-        : "";
-
-      // Look up actual obj tokens from the wiki client
-      const srcNode = wikiClient.getNode(r.sourceToken);
-      const tgtNode = wikiClient.getNode(r.targetToken);
-
-      const pageState: typeof state.pages[string] = {
-        targetNodeToken: r.targetToken,
-        targetObjToken: tgtNode?.objToken ?? targetObjToken,
-        sourceObjToken: srcNode?.objToken ?? sourceObjToken,
-        title: r.title,
-        objEditTime: srcNode?.objEditTime ?? "",
-        contentHash: "", // computed on next incremental run
-        lastSynced: new Date().toISOString(),
-      };
-      if (r.failedImages && r.failedImages.length > 0) {
-        pageState.failedImages = r.failedImages.map(f => f.sourceToken);
-      }
-      state.pages[r.sourceToken] = pageState;
-    }
-    if (r.children.length > 0) {
-      recordResultsInState(state, r.children, refs, wikiClient);
-    }
-  }
 }
 
 function showHelp(): void {

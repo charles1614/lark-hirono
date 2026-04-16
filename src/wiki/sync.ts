@@ -7,7 +7,7 @@
 
 import { execSync } from "node:child_process";
 import { copyDocBlocks, cleanupEmptyTails, clearDocContent, computeHeadingNumbers, BLOCK_TYPE_NAME, type FailedImage } from "./block-copy.js";
-import { prefetchImages, closeBrowser } from "../browser/image-transfer.js";
+import { prefetchImages } from "../browser/image-transfer.js";
 import { computeContentHash, type SyncState, type PageState } from "./sync-state.js";
 import type { RefMaps } from "./fix-refs.js";
 import type { WikiClient } from "./wiki-client.js";
@@ -39,38 +39,34 @@ export async function syncTree(
   const results: SyncNodeResult[] = [];
   const total = children.length;
 
-  try {
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
-      const prefix = `[${i + 1}/${total}]`;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    const prefix = `[${i + 1}/${total}]`;
 
-      if (opts.dryRun) {
-        printDryRunNode(child, prefix);
-        if (child.hasChild) {
-          const subResults = await syncTree(
-            wikiClient, child, "", targetSpaceId, opts, refs,
-          );
-          results.push({
-            sourceToken: child.nodeToken, targetToken: null,
-            title: child.title, strategy: "skipped", ok: true, children: subResults,
-          });
-        } else {
-          results.push({
-            sourceToken: child.nodeToken, targetToken: null,
-            title: child.title, strategy: "skipped", ok: true, children: [],
-          });
-        }
-        continue;
+    if (opts.dryRun) {
+      printDryRunNode(child, prefix);
+      if (child.hasChild) {
+        const subResults = await syncTree(
+          wikiClient, child, "", targetSpaceId, opts, refs,
+        );
+        results.push({
+          sourceToken: child.nodeToken, targetToken: null,
+          title: child.title, strategy: "skipped", ok: true, children: subResults,
+        });
+      } else {
+        results.push({
+          sourceToken: child.nodeToken, targetToken: null,
+          title: child.title, strategy: "skipped", ok: true, children: [],
+        });
       }
-
-      const result = await syncNode(
-        wikiClient, child, targetParentToken, targetSpaceId, opts, prefix, refs,
-      );
-      results.push(result);
-      sleep(500);
+      continue;
     }
-  } finally {
-    await closeBrowser();
+
+    const result = await syncNode(
+      wikiClient, child, targetParentToken, targetSpaceId, opts, prefix, refs,
+    );
+    results.push(result);
+    sleep(500);
   }
 
   return results;
@@ -188,13 +184,20 @@ export async function syncTreeIncremental(
   state: SyncState,
   opts: SyncOptions,
   refs?: RefMaps,
+  onProgress?: () => void,
 ): Promise<SyncNodeResult[]> {
   const cli = wikiClient.cli;
 
   // ── Root content check ──────────────────────────────────────────────
   if (sourceNode.objType === "docx") {
+    // Always populate root refs so fixupReferences can rewrite links to/from the root
+    if (refs) {
+      refs.nodeMap.set(sourceNode.nodeToken, targetNode.nodeToken);
+      refs.objMap.set(sourceNode.objToken, targetNode.objToken);
+    }
+
     const rootChanged = sourceNode.objEditTime !== "" &&
-      sourceNode.objEditTime !== state.lastSyncTime;
+      sourceNode.objEditTime !== (state.rootObjEditTime ?? "");
 
     if (rootChanged || state.rootContentHash === "") {
       const sourceBlocks = cli.getBlocks(sourceNode.objToken);
@@ -207,6 +210,7 @@ export async function syncTreeIncremental(
       } else if (opts.verbose) {
         console.log("  Root page: metadata changed but content identical — skipping");
       }
+      state.rootObjEditTime = sourceNode.objEditTime;
     } else if (opts.verbose) {
       console.log("  Root page unchanged — skipping");
     }
@@ -226,143 +230,146 @@ export async function syncTreeIncremental(
   const results: SyncNodeResult[] = [];
   const total = children.length;
 
-  try {
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
-      const prefix = `[${i + 1}/${total}]`;
-      const existing = state.pages[child.nodeToken];
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    const prefix = `[${i + 1}/${total}]`;
+    const existing = state.pages[child.nodeToken];
 
-      if (!existing) {
-        // ── New node: full copy ─────────────────────────────────────
-        console.log(`${prefix} NEW: "${child.title}"`);
-        const result = await syncNode(
-          wikiClient, child, targetNode.nodeToken, targetNode.spaceId, opts, prefix, refs,
-        );
-        results.push(result);
+    if (!existing) {
+      // ── New node: full copy ─────────────────────────────────────
+      console.log(`${prefix} NEW: "${child.title}"`);
+      const result = await syncNode(
+        wikiClient, child, targetNode.nodeToken, targetNode.spaceId, opts, prefix, refs,
+      );
+      results.push(result);
 
-        // Record in state
-        if (result.ok && result.targetToken && child.objType === "docx") {
-          const sourceBlocks = cli.getBlocks(child.objToken);
-          state.pages[child.nodeToken] = {
-            targetNodeToken: result.targetToken,
-            targetObjToken: refs?.docMap.get(result.targetToken) ?? "",
-            sourceObjToken: child.objToken,
-            title: child.title,
-            objEditTime: child.objEditTime,
-            contentHash: computeContentHash(sourceBlocks),
-            lastSynced: new Date().toISOString(),
-          };
-        }
-        sleep(500);
-        continue;
+      // Record this node AND all its descendants in state
+      if (result.ok && result.targetToken) {
+        const emptyRefs: RefMaps = { nodeMap: new Map(), objMap: new Map(), docMap: new Map() };
+        recordResultsInState(state, [result], refs ?? emptyRefs, wikiClient);
       }
+      sleep(500);
+      onProgress?.();
+      continue;
+    }
 
-      // ── Existing node: check for changes ──────────────────────────
-      if (child.objEditTime !== "" && child.objEditTime === existing.objEditTime) {
-        // Timestamp unchanged — skip
-        if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (unchanged)`);
-        results.push({
-          sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
-          title: child.title, strategy: "unchanged", ok: true, children: [],
-        });
-
-        // Still recurse into children if it has any
-        if (child.hasChild) {
-          const childResults = await syncChildrenIncremental(
-            wikiClient, child, existing, state, opts, refs,
-          );
-          results[results.length - 1].children = childResults;
-        }
-        continue;
+    // ── Existing node: check for changes ──────────────────────────
+    if (child.objEditTime !== "" && child.objEditTime === existing.objEditTime) {
+      // Timestamp unchanged — skip
+      if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (unchanged)`);
+      // Populate nodeMap/objMap so fixupReferences can rewrite links pointing here
+      if (refs) {
+        refs.nodeMap.set(child.nodeToken, existing.targetNodeToken);
+        refs.objMap.set(child.objToken, existing.targetObjToken);
       }
+      results.push({
+        sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+        title: child.title, strategy: "unchanged", ok: true, children: [],
+      });
 
-      // Timestamp changed — check content hash
-      if (child.objType === "docx") {
-        const sourceBlocks = cli.getBlocks(child.objToken);
-        const hash = computeContentHash(sourceBlocks);
-
-        if (hash === existing.contentHash) {
-          // Content identical (metadata-only change)
-          if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (metadata-only change)`);
-          existing.objEditTime = child.objEditTime;
-          existing.lastSynced = new Date().toISOString();
-          results.push({
-            sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
-            title: child.title, strategy: "unchanged", ok: true, children: [],
-          });
-        } else {
-          // Content changed — clear and re-copy
-          console.log(`${prefix} MOD: "${child.title}" — updating…`);
-          clearDocContent(cli, existing.targetObjToken);
-
-          const imageCache = await prefetchImages(sourceBlocks, child.nodeToken, {
-            verbose: opts.verbose, browserState: opts.browserState,
-          });
-          const headingNumbers = opts.headingNumbers
-            ? computeHeadingNumbers(sourceBlocks)
-            : undefined;
-
-          const copyResult = copyDocBlocks(
-            cli, sourceBlocks, existing.targetObjToken, imageCache,
-            { verbose: opts.verbose, headingNumbers },
-          );
-          console.log(`${prefix}   ${copyResult.created} blocks created`);
-          if (copyResult.failedImages.length > 0) {
-            console.error(`${prefix}   WARNING: ${copyResult.failedImages.length} image(s) failed`);
-            for (const f of copyResult.failedImages) {
-              console.error(`${prefix}     - ${f.sourceToken.slice(0, 12)}…: ${f.reason}`);
-            }
-          }
-
-          try {
-            cleanupEmptyTails(cli, existing.targetObjToken, sourceBlocks);
-          } catch { /* ignore */ }
-
-          // Update refs for link fixup
-          if (refs) {
-            refs.nodeMap.set(child.nodeToken, existing.targetNodeToken);
-            refs.objMap.set(child.objToken, existing.targetObjToken);
-            refs.docMap.set(existing.targetNodeToken, existing.targetObjToken);
-          }
-
-          existing.objEditTime = child.objEditTime;
-          existing.contentHash = hash;
-          existing.title = child.title;
-          existing.lastSynced = new Date().toISOString();
-          if (copyResult.failedImages.length > 0) {
-            existing.failedImages = copyResult.failedImages.map(f => f.sourceToken);
-          } else {
-            delete existing.failedImages;
-          }
-
-          results.push({
-            sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
-            title: child.title, strategy: "updated", ok: true,
-            failedImages: copyResult.failedImages.length > 0 ? copyResult.failedImages : undefined,
-            children: [],
-          });
-        }
-      } else {
-        // Non-docx: can't diff, treat as unchanged
-        if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (non-docx, can't diff)`);
-        results.push({
-          sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
-          title: child.title, strategy: "unchanged", ok: true, children: [],
-        });
-      }
-
-      // Recurse into children
+      // Still recurse into children if it has any
       if (child.hasChild) {
         const childResults = await syncChildrenIncremental(
           wikiClient, child, existing, state, opts, refs,
         );
         results[results.length - 1].children = childResults;
       }
-
-      sleep(500);
+      continue;
     }
-  } finally {
-    await closeBrowser();
+
+    // Timestamp changed — check content hash
+    if (child.objType === "docx") {
+      const sourceBlocks = cli.getBlocks(child.objToken);
+      const hash = computeContentHash(sourceBlocks);
+
+      if (hash === existing.contentHash) {
+        // Content identical (metadata-only change)
+        if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (metadata-only change)`);
+        existing.objEditTime = child.objEditTime;
+        existing.lastSynced = new Date().toISOString();
+        if (refs) {
+          refs.nodeMap.set(child.nodeToken, existing.targetNodeToken);
+          refs.objMap.set(child.objToken, existing.targetObjToken);
+        }
+        results.push({
+          sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+          title: child.title, strategy: "unchanged", ok: true, children: [],
+        });
+      } else {
+        // Content changed — clear and re-copy
+        console.log(`${prefix} MOD: "${child.title}" — updating…`);
+        clearDocContent(cli, existing.targetObjToken);
+
+        const imageCache = await prefetchImages(sourceBlocks, child.nodeToken, {
+          verbose: opts.verbose, browserState: opts.browserState,
+        });
+        const headingNumbers = opts.headingNumbers
+          ? computeHeadingNumbers(sourceBlocks)
+          : undefined;
+
+        const copyResult = copyDocBlocks(
+          cli, sourceBlocks, existing.targetObjToken, imageCache,
+          { verbose: opts.verbose, headingNumbers },
+        );
+        console.log(`${prefix}   ${copyResult.created} blocks created`);
+        if (copyResult.failedImages.length > 0) {
+          console.error(`${prefix}   WARNING: ${copyResult.failedImages.length} image(s) failed`);
+          for (const f of copyResult.failedImages) {
+            console.error(`${prefix}     - ${f.sourceToken.slice(0, 12)}…: ${f.reason}`);
+          }
+        }
+
+        try {
+          cleanupEmptyTails(cli, existing.targetObjToken, sourceBlocks);
+        } catch { /* ignore */ }
+
+        // Update refs for link fixup
+        if (refs) {
+          refs.nodeMap.set(child.nodeToken, existing.targetNodeToken);
+          refs.objMap.set(child.objToken, existing.targetObjToken);
+          refs.docMap.set(existing.targetNodeToken, existing.targetObjToken);
+        }
+
+        existing.objEditTime = child.objEditTime;
+        existing.contentHash = hash;
+        existing.title = child.title;
+        existing.lastSynced = new Date().toISOString();
+        if (copyResult.failedImages.length > 0) {
+          existing.failedImages = copyResult.failedImages.map(f => f.sourceToken);
+        } else {
+          delete existing.failedImages;
+        }
+
+        results.push({
+          sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+          title: child.title, strategy: "updated", ok: true,
+          failedImages: copyResult.failedImages.length > 0 ? copyResult.failedImages : undefined,
+          children: [],
+        });
+      }
+    } else {
+      // Non-docx: can't diff, treat as unchanged
+      if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (non-docx, can't diff)`);
+      if (refs) {
+        refs.nodeMap.set(child.nodeToken, existing.targetNodeToken);
+        refs.objMap.set(child.objToken, existing.targetObjToken);
+      }
+      results.push({
+        sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+        title: child.title, strategy: "unchanged", ok: true, children: [],
+      });
+    }
+
+    // Recurse into children
+    if (child.hasChild) {
+      const childResults = await syncChildrenIncremental(
+        wikiClient, child, existing, state, opts, refs, onProgress,
+      );
+      results[results.length - 1].children = childResults;
+    }
+
+    sleep(500);
+    onProgress?.();
   }
 
   state.lastSyncTime = new Date().toISOString();
@@ -379,6 +386,7 @@ async function syncChildrenIncremental(
   state: SyncState,
   opts: SyncOptions,
   refs?: RefMaps,
+  onProgress?: () => void,
 ): Promise<SyncNodeResult[]> {
   // Build a temporary "target node" reference for recursion
   const targetNode: WikiNode = {
@@ -394,14 +402,63 @@ async function syncChildrenIncremental(
   };
   // Resolve actual target node to get spaceId
   const resolved = wikiClient.getNode(existing.targetNodeToken);
-  if (resolved) {
-    targetNode.spaceId = resolved.spaceId;
+  if (!resolved) {
+    console.error(`  WARNING: target node ${existing.targetNodeToken} no longer exists — skipping children of "${sourceChild.title}"`);
+    return [];
   }
+  targetNode.spaceId = resolved.spaceId;
 
-  return syncTreeIncremental(wikiClient, sourceChild, targetNode, state, opts, refs);
+  return syncTreeIncremental(wikiClient, sourceChild, targetNode, state, opts, refs, onProgress);
 }
 
 // ─── Internal ───────────────────────────────────────────────────────────
+
+/**
+ * After a server-copy, recursively match source children to target children
+ * by position (server-copy preserves tree structure and order), populating
+ * refs and returning synthetic SyncNodeResult[] for state recording.
+ */
+function buildServerCopyResults(
+  wikiClient: WikiClient,
+  sourceNodeToken: string,
+  sourceSpaceId: string,
+  targetNodeToken: string,
+  targetSpaceId: string,
+  refs?: RefMaps,
+): SyncNodeResult[] {
+  const srcChildren = wikiClient.listChildren(sourceSpaceId, sourceNodeToken);
+  if (srcChildren.length === 0) return [];
+
+  const tgtChildren = wikiClient.listChildren(targetSpaceId, targetNodeToken);
+  const results: SyncNodeResult[] = [];
+
+  for (let i = 0; i < srcChildren.length && i < tgtChildren.length; i++) {
+    const src = srcChildren[i];
+    const tgt = tgtChildren[i];
+
+    if (refs) {
+      refs.nodeMap.set(src.nodeToken, tgt.nodeToken);
+      refs.objMap.set(src.objToken, tgt.objToken);
+      refs.docMap.set(tgt.nodeToken, tgt.objToken);
+    }
+
+    const childResults = src.hasChild
+      ? buildServerCopyResults(wikiClient, src.nodeToken, src.spaceId, tgt.nodeToken, tgt.spaceId, refs)
+      : [];
+
+    results.push({
+      sourceToken: src.nodeToken,
+      targetToken: tgt.nodeToken,
+      title: src.title,
+      strategy: "server-copy",
+      ok: true,
+      sourceObjToken: src.objToken,
+      targetObjToken: tgt.objToken,
+      children: childResults,
+    });
+  }
+  return results;
+}
 
 async function syncNode(
   wikiClient: WikiClient,
@@ -429,9 +486,28 @@ async function syncNode(
 
   if (copied) {
     console.log(`${prefix}   OK (server-copy) → ${copied.nodeToken}`);
+
+    // Populate refs for the copied root node
+    if (refs) {
+      refs.nodeMap.set(sourceNode.nodeToken, copied.nodeToken);
+      refs.objMap.set(sourceNode.objToken, copied.objToken);
+      refs.docMap.set(copied.nodeToken, copied.objToken);
+    }
+
+    // Recursively match children for state tracking and ref fixup
+    const childResults = sourceNode.hasChild
+      ? buildServerCopyResults(
+          wikiClient, sourceNode.nodeToken, sourceNode.spaceId,
+          copied.nodeToken, copied.spaceId || targetSpaceId, refs,
+        )
+      : [];
+
     return {
       sourceToken: sourceNode.nodeToken, targetToken: copied.nodeToken,
-      title: sourceNode.title, strategy: "server-copy", ok: true, children: [],
+      title: sourceNode.title, strategy: "server-copy", ok: true,
+      sourceObjToken: sourceNode.objToken,
+      targetObjToken: copied.objToken,
+      children: childResults,
     };
   }
 
@@ -453,6 +529,8 @@ async function syncNode(
       sourceToken: sourceNode.nodeToken, targetToken: pToken,
       title: sourceNode.title, strategy: "block-copy",
       ok: pToken !== null, error: pToken ? undefined : "Failed to create placeholder",
+      sourceObjToken: sourceNode.objToken,
+      targetObjToken: placeholder?.objToken,
       children: childResults,
     };
   }
@@ -546,6 +624,9 @@ async function syncNode(
     title: sourceNode.title, strategy: "block-copy", ok: true,
     unsupportedTypes: result.unsupportedTypes.size > 0 ? result.unsupportedTypes : undefined,
     failedImages: result.failedImages.length > 0 ? result.failedImages : undefined,
+    contentHash: computeContentHash(sourceBlocks),
+    sourceObjToken: sourceNode.objToken,
+    targetObjToken,
     children: childResults,
   };
 }
@@ -559,6 +640,56 @@ function printDryRunNode(node: WikiNode, prefix: string): void {
 
 function sleep(ms: number): void {
   execSync(`sleep ${ms / 1000}`);
+}
+
+// ─── State Recording ───────────────────────────────────────────────────
+
+/** Walk sync results recursively and populate state.pages with the mapping. */
+export function recordResultsInState(
+  state: SyncState,
+  results: SyncNodeResult[],
+  refs: RefMaps,
+  wikiClient: WikiClient,
+): void {
+  for (const r of results) {
+    if (r.ok && r.targetToken && r.strategy !== "skipped") {
+      // Use pre-computed values from SyncNodeResult when available;
+      // fall back to API lookup
+      const targetObjToken = r.targetObjToken
+        ?? refs.docMap.get(r.targetToken)
+        ?? wikiClient.getNode(r.targetToken)?.objToken
+        ?? "";
+      const sourceObjToken = r.sourceObjToken
+        ?? wikiClient.getNode(r.sourceToken)?.objToken
+        ?? "";
+
+      let contentHash = r.contentHash ?? "";
+      if (!contentHash && sourceObjToken) {
+        try {
+          const blocks = wikiClient.cli.getBlocks(sourceObjToken);
+          contentHash = computeContentHash(blocks);
+        } catch { /* leave empty */ }
+      }
+
+      const srcNode = wikiClient.getNode(r.sourceToken);
+      const pageState: PageState = {
+        targetNodeToken: r.targetToken,
+        targetObjToken,
+        sourceObjToken,
+        title: r.title,
+        objEditTime: srcNode?.objEditTime ?? "",
+        contentHash,
+        lastSynced: new Date().toISOString(),
+      };
+      if (r.failedImages && r.failedImages.length > 0) {
+        pageState.failedImages = r.failedImages.map(f => f.sourceToken);
+      }
+      state.pages[r.sourceToken] = pageState;
+    }
+    if (r.children.length > 0) {
+      recordResultsInState(state, r.children, refs, wikiClient);
+    }
+  }
 }
 
 // ─── Summary ────────────────────────────────────────────────────────────

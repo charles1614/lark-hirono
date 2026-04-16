@@ -29,6 +29,8 @@ export interface PageState {
   objEditTime: string;
   contentHash: string;
   lastSynced: string;
+  /** Source image tokens that failed to sync (absent if all succeeded) */
+  failedImages?: string[];
 }
 
 // ─── Paths ──────────────────────────────────────────────────────────────

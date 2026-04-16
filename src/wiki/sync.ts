@@ -6,7 +6,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { copyDocBlocks, cleanupEmptyTails, clearDocContent, computeHeadingNumbers, BLOCK_TYPE_NAME } from "./block-copy.js";
+import { copyDocBlocks, cleanupEmptyTails, clearDocContent, computeHeadingNumbers, BLOCK_TYPE_NAME, type FailedImage } from "./block-copy.js";
 import { prefetchImages, closeBrowser } from "../browser/image-transfer.js";
 import { computeContentHash, type SyncState, type PageState } from "./sync-state.js";
 import type { RefMaps } from "./fix-refs.js";
@@ -110,10 +110,10 @@ export async function syncRootContent(
   targetNode: WikiNode,
   opts: SyncOptions,
   refs?: RefMaps,
-): Promise<{ ok: boolean; created: number }> {
+): Promise<{ ok: boolean; created: number; failedImages: FailedImage[] }> {
   if (sourceNode.objType !== "docx") {
     if (opts.verbose) console.log("  Root is not docx — skipping content sync");
-    return { ok: true, created: 0 };
+    return { ok: true, created: 0, failedImages: [] };
   }
 
   const cli = wikiClient.cli;
@@ -122,7 +122,7 @@ export async function syncRootContent(
   const sourceBlocks = cli.getBlocks(sourceNode.objToken);
   if (sourceBlocks.length === 0) {
     if (opts.verbose) console.log("  Root has no blocks — skipping content sync");
-    return { ok: true, created: 0 };
+    return { ok: true, created: 0, failedImages: [] };
   }
 
   // Check if source has any real content (beyond the root block itself)
@@ -130,7 +130,7 @@ export async function syncRootContent(
   const rootChildren = (root?.children as string[]) ?? [];
   if (rootChildren.length === 0) {
     if (opts.verbose) console.log("  Root page is empty — skipping content sync");
-    return { ok: true, created: 0 };
+    return { ok: true, created: 0, failedImages: [] };
   }
 
   console.log(`  Syncing root page content (${sourceBlocks.length} blocks)…`);
@@ -155,6 +155,12 @@ export async function syncRootContent(
     { verbose: opts.verbose, headingNumbers },
   );
   console.log(`  Root content: ${result.created} blocks created`);
+  if (result.failedImages.length > 0) {
+    console.error(`  WARNING: ${result.failedImages.length} image(s) failed in root page`);
+    for (const f of result.failedImages) {
+      console.error(`    - ${f.sourceToken.slice(0, 12)}…: ${f.reason}`);
+    }
+  }
 
   // Cleanup auto-created empty tails
   try {
@@ -168,7 +174,7 @@ export async function syncRootContent(
     refs.docMap.set(targetNode.nodeToken, targetNode.objToken);
   }
 
-  return { ok: true, created: result.created };
+  return { ok: true, created: result.created, failedImages: result.failedImages };
 }
 
 /**
@@ -301,6 +307,12 @@ export async function syncTreeIncremental(
             { verbose: opts.verbose, headingNumbers },
           );
           console.log(`${prefix}   ${copyResult.created} blocks created`);
+          if (copyResult.failedImages.length > 0) {
+            console.error(`${prefix}   WARNING: ${copyResult.failedImages.length} image(s) failed`);
+            for (const f of copyResult.failedImages) {
+              console.error(`${prefix}     - ${f.sourceToken.slice(0, 12)}…: ${f.reason}`);
+            }
+          }
 
           try {
             cleanupEmptyTails(cli, existing.targetObjToken, sourceBlocks);
@@ -317,10 +329,17 @@ export async function syncTreeIncremental(
           existing.contentHash = hash;
           existing.title = child.title;
           existing.lastSynced = new Date().toISOString();
+          if (copyResult.failedImages.length > 0) {
+            existing.failedImages = copyResult.failedImages.map(f => f.sourceToken);
+          } else {
+            delete existing.failedImages;
+          }
 
           results.push({
             sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
-            title: child.title, strategy: "updated", ok: true, children: [],
+            title: child.title, strategy: "updated", ok: true,
+            failedImages: copyResult.failedImages.length > 0 ? copyResult.failedImages : undefined,
+            children: [],
           });
         }
       } else {
@@ -493,6 +512,12 @@ async function syncNode(
   if (result.skipped > 0) {
     console.log(`${prefix}   ${result.skipped} blocks skipped`);
   }
+  if (result.failedImages.length > 0) {
+    console.error(`${prefix}   WARNING: ${result.failedImages.length} image(s) failed`);
+    for (const f of result.failedImages) {
+      console.error(`${prefix}     - ${f.sourceToken.slice(0, 12)}…: ${f.reason}`);
+    }
+  }
   if (result.unsupportedTypes.size > 0) {
     const parts: string[] = [];
     for (const [bt, count] of result.unsupportedTypes) {
@@ -520,6 +545,7 @@ async function syncNode(
     sourceToken: sourceNode.nodeToken, targetToken: newNode.nodeToken,
     title: sourceNode.title, strategy: "block-copy", ok: true,
     unsupportedTypes: result.unsupportedTypes.size > 0 ? result.unsupportedTypes : undefined,
+    failedImages: result.failedImages.length > 0 ? result.failedImages : undefined,
     children: childResults,
   };
 }
@@ -537,13 +563,14 @@ function sleep(ms: number): void {
 
 // ─── Summary ────────────────────────────────────────────────────────────
 
-export function printSummary(results: SyncNodeResult[]): void {
+export function printSummary(results: SyncNodeResult[], rootFailedImages?: FailedImage[]): void {
   let copied = 0;
   let blockCopy = 0;
   let updated = 0;
   let unchanged = 0;
   let skipped = 0;
   let failed = 0;
+  let imagesFailed = rootFailedImages?.length ?? 0;
   const allUnsupported = new Map<number, number>();
 
   function count(list: SyncNodeResult[]): void {
@@ -559,6 +586,7 @@ export function printSummary(results: SyncNodeResult[]): void {
           allUnsupported.set(bt, (allUnsupported.get(bt) ?? 0) + n);
         }
       }
+      if (r.failedImages) imagesFailed += r.failedImages.length;
       count(r.children);
     }
   }
@@ -579,5 +607,9 @@ export function printSummary(results: SyncNodeResult[]): void {
       const name = BLOCK_TYPE_NAME[bt] ?? "unknown";
       console.log(`    - ${name} (type ${bt}): ${n} block(s)`);
     }
+  }
+
+  if (imagesFailed > 0) {
+    console.log(`\n  ⚠ ${imagesFailed} image(s) failed to sync`);
   }
 }

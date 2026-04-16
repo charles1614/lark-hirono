@@ -13,6 +13,7 @@ import { parseWikiUrl } from "../wiki/wiki-url.js";
 import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary } from "../wiki/sync.js";
 import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
 import { loadState, saveState, buildInitialState, computeContentHash } from "../wiki/sync-state.js";
+import type { FailedImage } from "../wiki/block-copy.js";
 import type { SyncOptions, SyncNodeResult } from "../wiki/wiki-types.js";
 import type { SyncState } from "../wiki/sync-state.js";
 
@@ -121,6 +122,7 @@ export async function run(args: string[]): Promise<number> {
   };
 
   let results: SyncNodeResult[];
+  let rootFailedImages: FailedImage[] = [];
 
   if (existingState) {
     // ── Incremental sync ───────────────────────────────────────────
@@ -143,7 +145,8 @@ export async function run(args: string[]): Promise<number> {
     console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
 
     // Mirror root page content (source → target)
-    await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
+    const rootResult = await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
+    rootFailedImages = rootResult.failedImages;
 
     results = await syncTree(
       wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts, refs,
@@ -167,13 +170,16 @@ export async function run(args: string[]): Promise<number> {
     saveState(state);
   }
 
-  printSummary(results);
+  printSummary(results, rootFailedImages);
 
   const anyFailed = results.some(function hasFail(r): boolean {
     return !r.ok || r.children.some(hasFail);
   });
+  const anyImagesFailed = rootFailedImages.length > 0 || results.some(function hasImageFail(r): boolean {
+    return (r.failedImages?.length ?? 0) > 0 || r.children.some(hasImageFail);
+  });
 
-  return anyFailed ? 1 : 0;
+  return anyFailed || anyImagesFailed ? 1 : 0;
 }
 
 /** Walk sync results and populate state.pages with the mapping. */
@@ -195,7 +201,7 @@ function recordResultsInState(
       const srcNode = wikiClient.getNode(r.sourceToken);
       const tgtNode = wikiClient.getNode(r.targetToken);
 
-      state.pages[r.sourceToken] = {
+      const pageState: typeof state.pages[string] = {
         targetNodeToken: r.targetToken,
         targetObjToken: tgtNode?.objToken ?? targetObjToken,
         sourceObjToken: srcNode?.objToken ?? sourceObjToken,
@@ -204,6 +210,10 @@ function recordResultsInState(
         contentHash: "", // computed on next incremental run
         lastSynced: new Date().toISOString(),
       };
+      if (r.failedImages && r.failedImages.length > 0) {
+        pageState.failedImages = r.failedImages.map(f => f.sourceToken);
+      }
+      state.pages[r.sourceToken] = pageState;
     }
     if (r.children.length > 0) {
       recordResultsInState(state, r.children, refs, wikiClient);

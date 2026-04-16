@@ -24,11 +24,22 @@ export interface ImageData {
 
 export type ImageCache = Map<string, ImageData>;
 
+export interface FailedImage {
+  /** Source image file_token */
+  sourceToken: string;
+  /** Target block ID that was supposed to receive the image */
+  targetBlockId: string;
+  /** Human-readable reason for failure */
+  reason: string;
+}
+
 export interface CopyResult {
   created: number;
   skipped: number;
   /** Unsupported block types encountered: block_type → count */
   unsupportedTypes: Map<number, number>;
+  /** Images that failed to upload after retries */
+  failedImages: FailedImage[];
 }
 
 type Block = Record<string, unknown>;
@@ -245,6 +256,41 @@ function uploadImageToBlock(
   }
 }
 
+function uploadImageWithRetry(
+  cli: LarkCli,
+  docId: string,
+  blockId: string,
+  img: ImageData,
+  maxAttempts = 2,
+): { ok: boolean; reason: string } {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const uploaded = uploadImageToBlock(cli, docId, blockId, img);
+    if (!uploaded) {
+      if (attempt < maxAttempts) {
+        sleep(RETRY_DELAY_MS * 2);
+        continue;
+      }
+      return { ok: false, reason: "upload API failed" };
+    }
+
+    // Verify: fetch block back and check image token is non-empty
+    sleep(RETRY_DELAY_MS);
+    const block = cli.getBlock(docId, blockId);
+    const token = ((block?.image as Record<string, unknown>)?.token as string) ?? "";
+    if (token) {
+      return { ok: true, reason: "" };
+    }
+
+    // Token empty after upload — retry
+    if (attempt < maxAttempts) {
+      sleep(RETRY_DELAY_MS * 2);
+      continue;
+    }
+    return { ok: false, reason: "upload succeeded but block has no image token" };
+  }
+  return { ok: false, reason: "exhausted retries" };
+}
+
 // ─── Table Row Expansion ────────────────────────────────────────────────
 
 function insertExtraTableRows(cli: LarkCli, docId: string, tableBlockId: string, extraRows: number): void {
@@ -303,12 +349,13 @@ export function copyDocBlocks(
   if (!root) throw new Error("No root block in source document");
 
   const rootChildren = root.children as string[] | undefined;
-  if (!rootChildren || rootChildren.length === 0) return { created: 0, skipped: 0, unsupportedTypes: new Map() };
+  if (!rootChildren || rootChildren.length === 0) return { created: 0, skipped: 0, unsupportedTypes: new Map(), failedImages: [] };
 
   const queue: QueueItem[] = [[rootChildren, targetDocId]];
   let totalCreated = 0;
   let totalSkipped = 0;
   const unsupportedTypes = new Map<number, number>();
+  const failedImages: FailedImage[] = [];
 
   while (queue.length > 0) {
     const next: QueueItem[] = [];
@@ -343,7 +390,13 @@ export function copyDocBlocks(
         const s = blockMap.get(cid);
         if (!s) continue;
         const b = prepareBlock(s, imageCache, opts?.headingNumbers);
-        if (b) pairs.push([b, s]);
+        if (b) {
+          pairs.push([b, s]);
+        } else if ((s.block_type as number) === 27) {
+          const token = ((s.image as Record<string, unknown>)?.token as string) ?? "unknown";
+          failedImages.push({ sourceToken: token, targetBlockId: "", reason: "image download failed" });
+          console.error(`    Image block dropped: ${token.slice(0, 12)}… (download failed)`);
+        }
       }
 
       // Create in batches
@@ -362,7 +415,7 @@ export function copyDocBlocks(
         if (created && created.length > 0) {
           totalCreated += created.length;
           insertPos += created.length;
-          processCreatedBlocks(cli, targetDocId, created, chunk, blockMap, next, opts);
+          processCreatedBlocks(cli, targetDocId, created, chunk, blockMap, next, failedImages, opts);
         } else {
           // Batch failed — retry one by one
           if (opts?.verbose) console.log("    Batch failed, retrying one-by-one…");
@@ -374,7 +427,7 @@ export function copyDocBlocks(
               if (oneResult && oneResult.length > 0) {
                 totalCreated++;
                 insertPos++;
-                processCreatedBlocks(cli, targetDocId, oneResult, [[single, srcBlk]], blockMap, next, opts);
+                processCreatedBlocks(cli, targetDocId, oneResult, [[single, srcBlk]], blockMap, next, failedImages, opts);
               } else {
                 totalSkipped++;
               }
@@ -393,7 +446,7 @@ export function copyDocBlocks(
     queue.push(...next);
   }
 
-  return { created: totalCreated, skipped: totalSkipped, unsupportedTypes };
+  return { created: totalCreated, skipped: totalSkipped, unsupportedTypes, failedImages };
 }
 
 /** Post-creation: upload images, expand tables, queue children. */
@@ -403,6 +456,7 @@ function processCreatedBlocks(
   chunk: Array<[PreparedBlock, Block]>,
   blockMap: Map<string, Block>,
   next: QueueItem[],
+  failedImages: FailedImage[],
   opts?: { verbose?: boolean },
 ): void {
   for (let j = 0; j < created.length && j < chunk.length; j++) {
@@ -411,10 +465,16 @@ function processCreatedBlocks(
     const newId = newBlk.block_id as string;
     if (!newId) continue;
 
-    // Upload image
+    // Upload image with retry and verification
     if (prepared._imageData) {
-      const ok = uploadImageToBlock(cli, docId, newId, prepared._imageData);
-      if (opts?.verbose && ok) console.log("    Uploaded image to block");
+      const result = uploadImageWithRetry(cli, docId, newId, prepared._imageData);
+      if (result.ok) {
+        if (opts?.verbose) console.log("    Uploaded image to block");
+      } else {
+        const srcToken = ((srcBlk.image as Record<string, unknown>)?.token as string) ?? "unknown";
+        failedImages.push({ sourceToken: srcToken, targetBlockId: newId, reason: result.reason });
+        console.error(`    Image upload FAILED: ${srcToken.slice(0, 12)}… → ${result.reason}`);
+      }
     }
 
     // Expand large tables

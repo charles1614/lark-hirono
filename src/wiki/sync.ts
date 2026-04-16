@@ -6,8 +6,9 @@
  */
 
 import { execSync } from "node:child_process";
-import { copyDocBlocks, cleanupEmptyTails, computeHeadingNumbers, BLOCK_TYPE_NAME } from "./block-copy.js";
+import { copyDocBlocks, cleanupEmptyTails, clearDocContent, computeHeadingNumbers, BLOCK_TYPE_NAME } from "./block-copy.js";
 import { prefetchImages, closeBrowser } from "../browser/image-transfer.js";
+import { computeContentHash, type SyncState, type PageState } from "./sync-state.js";
 import type { RefMaps } from "./fix-refs.js";
 import type { WikiClient } from "./wiki-client.js";
 import type { WikiNode, SyncNodeResult, SyncOptions } from "./wiki-types.js";
@@ -97,6 +98,288 @@ export function printTree(
       printTree(wikiClient, child, indent + 1);
     }
   }
+}
+
+/**
+ * Copy the source node's page content into the target node (mirror semantics).
+ * Clears existing target content, then block-copies from source.
+ */
+export async function syncRootContent(
+  wikiClient: WikiClient,
+  sourceNode: WikiNode,
+  targetNode: WikiNode,
+  opts: SyncOptions,
+  refs?: RefMaps,
+): Promise<{ ok: boolean; created: number }> {
+  if (sourceNode.objType !== "docx") {
+    if (opts.verbose) console.log("  Root is not docx — skipping content sync");
+    return { ok: true, created: 0 };
+  }
+
+  const cli = wikiClient.cli;
+
+  // Fetch source blocks
+  const sourceBlocks = cli.getBlocks(sourceNode.objToken);
+  if (sourceBlocks.length === 0) {
+    if (opts.verbose) console.log("  Root has no blocks — skipping content sync");
+    return { ok: true, created: 0 };
+  }
+
+  // Check if source has any real content (beyond the root block itself)
+  const root = sourceBlocks.find((b) => (b.block_type as number) === 1);
+  const rootChildren = (root?.children as string[]) ?? [];
+  if (rootChildren.length === 0) {
+    if (opts.verbose) console.log("  Root page is empty — skipping content sync");
+    return { ok: true, created: 0 };
+  }
+
+  console.log(`  Syncing root page content (${sourceBlocks.length} blocks)…`);
+
+  // Clear target content
+  clearDocContent(cli, targetNode.objToken);
+
+  // Pre-download images
+  const imageCache = await prefetchImages(sourceBlocks, sourceNode.nodeToken, {
+    verbose: opts.verbose,
+    browserState: opts.browserState,
+  });
+
+  // Compute heading numbers if requested
+  const headingNumbers = opts.headingNumbers
+    ? computeHeadingNumbers(sourceBlocks)
+    : undefined;
+
+  // BFS block copy into target
+  const result = copyDocBlocks(
+    cli, sourceBlocks, targetNode.objToken, imageCache,
+    { verbose: opts.verbose, headingNumbers },
+  );
+  console.log(`  Root content: ${result.created} blocks created`);
+
+  // Cleanup auto-created empty tails
+  try {
+    cleanupEmptyTails(cli, targetNode.objToken, sourceBlocks);
+  } catch { /* ignore */ }
+
+  // Record refs for link fixup
+  if (refs) {
+    refs.nodeMap.set(sourceNode.nodeToken, targetNode.nodeToken);
+    refs.objMap.set(sourceNode.objToken, targetNode.objToken);
+    refs.docMap.set(targetNode.nodeToken, targetNode.objToken);
+  }
+
+  return { ok: true, created: result.created };
+}
+
+/**
+ * Incremental sync — only create new nodes and update modified ones.
+ * Compares source tree against saved state to skip unchanged pages.
+ */
+export async function syncTreeIncremental(
+  wikiClient: WikiClient,
+  sourceNode: WikiNode,
+  targetNode: WikiNode,
+  state: SyncState,
+  opts: SyncOptions,
+  refs?: RefMaps,
+): Promise<SyncNodeResult[]> {
+  const cli = wikiClient.cli;
+
+  // ── Root content check ──────────────────────────────────────────────
+  if (sourceNode.objType === "docx") {
+    const rootChanged = sourceNode.objEditTime !== "" &&
+      sourceNode.objEditTime !== state.lastSyncTime;
+
+    if (rootChanged || state.rootContentHash === "") {
+      const sourceBlocks = cli.getBlocks(sourceNode.objToken);
+      const hash = computeContentHash(sourceBlocks);
+
+      if (hash !== state.rootContentHash) {
+        console.log("  Root page content changed — updating…");
+        await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
+        state.rootContentHash = hash;
+      } else if (opts.verbose) {
+        console.log("  Root page: metadata changed but content identical — skipping");
+      }
+    } else if (opts.verbose) {
+      console.log("  Root page unchanged — skipping");
+    }
+  }
+
+  // ── Children scan & classify ────────────────────────────────────────
+  const children = wikiClient.listChildren(
+    sourceNode.spaceId,
+    sourceNode.nodeToken,
+  );
+
+  if (children.length === 0) {
+    if (opts.verbose) console.log("  (no children)");
+    return [];
+  }
+
+  const results: SyncNodeResult[] = [];
+  const total = children.length;
+
+  try {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      const prefix = `[${i + 1}/${total}]`;
+      const existing = state.pages[child.nodeToken];
+
+      if (!existing) {
+        // ── New node: full copy ─────────────────────────────────────
+        console.log(`${prefix} NEW: "${child.title}"`);
+        const result = await syncNode(
+          wikiClient, child, targetNode.nodeToken, targetNode.spaceId, opts, prefix, refs,
+        );
+        results.push(result);
+
+        // Record in state
+        if (result.ok && result.targetToken && child.objType === "docx") {
+          const sourceBlocks = cli.getBlocks(child.objToken);
+          state.pages[child.nodeToken] = {
+            targetNodeToken: result.targetToken,
+            targetObjToken: refs?.docMap.get(result.targetToken) ?? "",
+            sourceObjToken: child.objToken,
+            title: child.title,
+            objEditTime: child.objEditTime,
+            contentHash: computeContentHash(sourceBlocks),
+            lastSynced: new Date().toISOString(),
+          };
+        }
+        sleep(500);
+        continue;
+      }
+
+      // ── Existing node: check for changes ──────────────────────────
+      if (child.objEditTime !== "" && child.objEditTime === existing.objEditTime) {
+        // Timestamp unchanged — skip
+        if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (unchanged)`);
+        results.push({
+          sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+          title: child.title, strategy: "unchanged", ok: true, children: [],
+        });
+
+        // Still recurse into children if it has any
+        if (child.hasChild) {
+          const childResults = await syncChildrenIncremental(
+            wikiClient, child, existing, state, opts, refs,
+          );
+          results[results.length - 1].children = childResults;
+        }
+        continue;
+      }
+
+      // Timestamp changed — check content hash
+      if (child.objType === "docx") {
+        const sourceBlocks = cli.getBlocks(child.objToken);
+        const hash = computeContentHash(sourceBlocks);
+
+        if (hash === existing.contentHash) {
+          // Content identical (metadata-only change)
+          if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (metadata-only change)`);
+          existing.objEditTime = child.objEditTime;
+          existing.lastSynced = new Date().toISOString();
+          results.push({
+            sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+            title: child.title, strategy: "unchanged", ok: true, children: [],
+          });
+        } else {
+          // Content changed — clear and re-copy
+          console.log(`${prefix} MOD: "${child.title}" — updating…`);
+          clearDocContent(cli, existing.targetObjToken);
+
+          const imageCache = await prefetchImages(sourceBlocks, child.nodeToken, {
+            verbose: opts.verbose, browserState: opts.browserState,
+          });
+          const headingNumbers = opts.headingNumbers
+            ? computeHeadingNumbers(sourceBlocks)
+            : undefined;
+
+          const copyResult = copyDocBlocks(
+            cli, sourceBlocks, existing.targetObjToken, imageCache,
+            { verbose: opts.verbose, headingNumbers },
+          );
+          console.log(`${prefix}   ${copyResult.created} blocks created`);
+
+          try {
+            cleanupEmptyTails(cli, existing.targetObjToken, sourceBlocks);
+          } catch { /* ignore */ }
+
+          // Update refs for link fixup
+          if (refs) {
+            refs.nodeMap.set(child.nodeToken, existing.targetNodeToken);
+            refs.objMap.set(child.objToken, existing.targetObjToken);
+            refs.docMap.set(existing.targetNodeToken, existing.targetObjToken);
+          }
+
+          existing.objEditTime = child.objEditTime;
+          existing.contentHash = hash;
+          existing.title = child.title;
+          existing.lastSynced = new Date().toISOString();
+
+          results.push({
+            sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+            title: child.title, strategy: "updated", ok: true, children: [],
+          });
+        }
+      } else {
+        // Non-docx: can't diff, treat as unchanged
+        if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (non-docx, can't diff)`);
+        results.push({
+          sourceToken: child.nodeToken, targetToken: existing.targetNodeToken,
+          title: child.title, strategy: "unchanged", ok: true, children: [],
+        });
+      }
+
+      // Recurse into children
+      if (child.hasChild) {
+        const childResults = await syncChildrenIncremental(
+          wikiClient, child, existing, state, opts, refs,
+        );
+        results[results.length - 1].children = childResults;
+      }
+
+      sleep(500);
+    }
+  } finally {
+    await closeBrowser();
+  }
+
+  state.lastSyncTime = new Date().toISOString();
+  return results;
+}
+
+/**
+ * Recurse into children of an existing (already-mapped) node during incremental sync.
+ */
+async function syncChildrenIncremental(
+  wikiClient: WikiClient,
+  sourceChild: WikiNode,
+  existing: PageState,
+  state: SyncState,
+  opts: SyncOptions,
+  refs?: RefMaps,
+): Promise<SyncNodeResult[]> {
+  // Build a temporary "target node" reference for recursion
+  const targetNode: WikiNode = {
+    nodeToken: existing.targetNodeToken,
+    objToken: existing.targetObjToken,
+    objType: sourceChild.objType,
+    title: sourceChild.title,
+    hasChild: true,
+    spaceId: "", // filled from target context
+    parentNodeToken: "",
+    nodeType: "origin",
+    objEditTime: "",
+  };
+  // Resolve actual target node to get spaceId
+  const resolved = wikiClient.getNode(existing.targetNodeToken);
+  if (resolved) {
+    targetNode.spaceId = resolved.spaceId;
+  }
+
+  return syncTreeIncremental(wikiClient, sourceChild, targetNode, state, opts, refs);
 }
 
 // ─── Internal ───────────────────────────────────────────────────────────
@@ -257,6 +540,8 @@ function sleep(ms: number): void {
 export function printSummary(results: SyncNodeResult[]): void {
   let copied = 0;
   let blockCopy = 0;
+  let updated = 0;
+  let unchanged = 0;
   let skipped = 0;
   let failed = 0;
   const allUnsupported = new Map<number, number>();
@@ -266,6 +551,8 @@ export function printSummary(results: SyncNodeResult[]): void {
       if (!r.ok) failed++;
       else if (r.strategy === "server-copy") copied++;
       else if (r.strategy === "block-copy") blockCopy++;
+      else if (r.strategy === "updated") updated++;
+      else if (r.strategy === "unchanged") unchanged++;
       else skipped++;
       if (r.unsupportedTypes) {
         for (const [bt, n] of r.unsupportedTypes) {
@@ -280,9 +567,11 @@ export function printSummary(results: SyncNodeResult[]): void {
   console.log("\n── Sync Summary ──");
   if (copied > 0) console.log(`  Server-copied: ${copied}`);
   if (blockCopy > 0) console.log(`  Block-copied:  ${blockCopy}`);
+  if (updated > 0) console.log(`  Updated:       ${updated}`);
+  if (unchanged > 0) console.log(`  Unchanged:     ${unchanged}`);
   if (skipped > 0) console.log(`  Skipped:       ${skipped}`);
   if (failed > 0) console.log(`  Failed:        ${failed}`);
-  console.log(`  Total:         ${copied + blockCopy + skipped + failed}`);
+  console.log(`  Total:         ${copied + blockCopy + updated + unchanged + skipped + failed}`);
 
   if (allUnsupported.size > 0) {
     console.log("\n  ⚠ Unsupported block types (content may be lost):");

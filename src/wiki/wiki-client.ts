@@ -144,5 +144,6 @@ function mapNode(n: Record<string, unknown>): WikiNode {
     spaceId: (n.space_id as string) ?? "",
     parentNodeToken: (n.parent_node_token as string) ?? "",
     nodeType: (n.node_type as string) ?? "origin",
+    objEditTime: (n.obj_edit_time as string) ?? "",
   };
 }

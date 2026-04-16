@@ -10,9 +10,11 @@
 import { LarkCli } from "../cli.js";
 import { WikiClient } from "../wiki/wiki-client.js";
 import { parseWikiUrl } from "../wiki/wiki-url.js";
-import { syncTree, printTree, printSummary } from "../wiki/sync.js";
+import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary } from "../wiki/sync.js";
 import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
-import type { SyncOptions } from "../wiki/wiki-types.js";
+import { loadState, saveState, buildInitialState, computeContentHash } from "../wiki/sync-state.js";
+import type { SyncOptions, SyncNodeResult } from "../wiki/wiki-types.js";
+import type { SyncState } from "../wiki/sync-state.js";
 
 export async function run(args: string[]): Promise<number> {
   const flags: Record<string, string | boolean> = {};
@@ -25,7 +27,7 @@ export async function run(args: string[]): Promise<number> {
     }
     if (a.startsWith("--")) {
       const key = a.slice(2);
-      if (["dry-run", "verbose", "numbers", "no-numbers"].includes(key)) {
+      if (["dry-run", "verbose", "numbers", "no-numbers", "force", "status"].includes(key)) {
         flags[key] = true;
       } else {
         flags[key] = args[++i] ?? "";
@@ -49,6 +51,8 @@ export async function run(args: string[]): Promise<number> {
   const dryRun = Boolean(flags["dry-run"]);
   const verbose = Boolean(flags.verbose);
   const headingNumbers = !flags["no-numbers"];
+  const force = Boolean(flags.force);
+  const status = Boolean(flags.status);
   const browserState = flags["browser-state"] as string | undefined;
 
   let source, target;
@@ -97,7 +101,18 @@ export async function run(args: string[]): Promise<number> {
     return 0;
   }
 
-  console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
+  // ── Check for existing sync state ──────────────────────────────────
+  const existingState = force ? null : loadState(sourceNode.nodeToken, targetNode.nodeToken);
+
+  if (status) {
+    if (!existingState) {
+      console.log("No previous sync state found — first run will do a full copy.");
+    } else {
+      console.log(`Last synced: ${existingState.lastSyncTime}`);
+      console.log(`Tracked pages: ${Object.keys(existingState.pages).length}`);
+    }
+    return 0;
+  }
 
   const refs: RefMaps = {
     nodeMap: new Map(),
@@ -105,13 +120,51 @@ export async function run(args: string[]): Promise<number> {
     docMap: new Map(),
   };
 
-  const results = await syncTree(
-    wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts, refs,
-  );
+  let results: SyncNodeResult[];
 
-  // Fix internal document references
-  if (refs.docMap.size > 0) {
-    fixupReferences(cli, refs, { verbose });
+  if (existingState) {
+    // ── Incremental sync ───────────────────────────────────────────
+    console.log(`\nIncremental sync "${sourceNode.title}" → "${targetNode.title}"…`);
+    console.log(`  (last synced: ${existingState.lastSyncTime})\n`);
+
+    results = await syncTreeIncremental(
+      wikiClient, sourceNode, targetNode, existingState, opts, refs,
+    );
+
+    // Fix internal document references
+    if (refs.docMap.size > 0) {
+      fixupReferences(cli, refs, { verbose });
+    }
+
+    // Save updated state
+    saveState(existingState);
+  } else {
+    // ── First-run: full copy ───────────────────────────────────────
+    console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
+
+    // Mirror root page content (source → target)
+    await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
+
+    results = await syncTree(
+      wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts, refs,
+    );
+
+    // Fix internal document references
+    if (refs.docMap.size > 0) {
+      fixupReferences(cli, refs, { verbose });
+    }
+
+    // Build and save initial state
+    const rootBlocks = sourceNode.objType === "docx"
+      ? cli.getBlocks(sourceNode.objToken) : [];
+    const state = buildInitialState(
+      sourceNode.nodeToken,
+      targetNode.nodeToken,
+      computeContentHash(rootBlocks),
+    );
+    // Record all successfully synced pages
+    recordResultsInState(state, results, refs, wikiClient);
+    saveState(state);
   }
 
   printSummary(results);
@@ -123,23 +176,68 @@ export async function run(args: string[]): Promise<number> {
   return anyFailed ? 1 : 0;
 }
 
+/** Walk sync results and populate state.pages with the mapping. */
+function recordResultsInState(
+  state: SyncState,
+  results: SyncNodeResult[],
+  refs: RefMaps,
+  wikiClient: WikiClient,
+): void {
+  for (const r of results) {
+    if (r.ok && r.targetToken && r.strategy !== "skipped") {
+      // Resolve obj tokens from refs or by fetching the node
+      const targetObjToken = refs.docMap.get(r.targetToken) ?? "";
+      const sourceObjToken = refs.objMap.has(r.sourceToken)
+        ? r.sourceToken  // sourceToken is a node token, need to find obj token
+        : "";
+
+      // Look up actual obj tokens from the wiki client
+      const srcNode = wikiClient.getNode(r.sourceToken);
+      const tgtNode = wikiClient.getNode(r.targetToken);
+
+      state.pages[r.sourceToken] = {
+        targetNodeToken: r.targetToken,
+        targetObjToken: tgtNode?.objToken ?? targetObjToken,
+        sourceObjToken: srcNode?.objToken ?? sourceObjToken,
+        title: r.title,
+        objEditTime: srcNode?.objEditTime ?? "",
+        contentHash: "", // computed on next incremental run
+        lastSynced: new Date().toISOString(),
+      };
+    }
+    if (r.children.length > 0) {
+      recordResultsInState(state, r.children, refs, wikiClient);
+    }
+  }
+}
+
 function showHelp(): void {
   console.log(`
-lark-hirono sync — Recursively copy wiki subtree
+lark-hirono sync — Mirror wiki subtree with incremental sync
 
 Usage:
   lark-hirono sync --from <url> --to <url> [options]
 
 Arguments:
   --from <url>              Source wiki URL or node token
-  --to <url>                Target wiki URL or node token (children created under this)
+  --to <url>                Target wiki URL or node token (mirror target)
 
 Options:
   --no-numbers              Skip auto-numbered headings (enabled by default)
   --browser-state <path>    Playwright browser state file
                             (default: ~/.config/lark-hirono/browser-state.json)
   --dry-run                 Print source tree without syncing
+  --force                   Ignore saved state, force full re-sync
+  --status                  Show sync status without syncing
   -v, --verbose             Verbose logging
+
+Mirror Semantics:
+  The target node mirrors the source: both root page content and child
+  nodes are synced. On first run, a full copy is performed. On subsequent
+  runs, only new and modified pages are synced (incremental).
+
+  Sync state is saved to ~/.config/lark-hirono/sync-state/ and used to
+  detect changes on the next run.
 
 Image Transfer:
   Images are downloaded via Playwright browser session (bypasses API 403).
@@ -152,5 +250,7 @@ Examples:
     --to https://my.feishu.cn/wiki/DST_TOKEN
 
   lark-hirono sync --from SRC_TOKEN --to DST_TOKEN --dry-run
+  lark-hirono sync --from SRC_TOKEN --to DST_TOKEN --force
+  lark-hirono sync --from SRC_TOKEN --to DST_TOKEN --status
 `);
 }

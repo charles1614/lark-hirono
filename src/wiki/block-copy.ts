@@ -475,6 +475,21 @@ export function cleanupEmptyTails(
   return deleted;
 }
 
+// ─── Clear Document Content ─────────────────────────────────────────────
+
+/**
+ * Delete all block children from a document, leaving it empty.
+ * Returns true if successful (or already empty).
+ */
+export function clearDocContent(cli: LarkCli, docObjToken: string): boolean {
+  const blocks = cli.getBlocks(docObjToken);
+  const root = blocks.find((b) => (b.block_type as number) === 1);
+  if (!root) return false;
+  const children = (root.children as string[]) ?? [];
+  if (children.length === 0) return true;
+  return cli.deleteBlockChildrenTail(docObjToken, docObjToken, 0, children.length);
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 function sleep(ms: number): void {

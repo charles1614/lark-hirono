@@ -806,3 +806,194 @@ export function printSummary(results: SyncNodeResult[], rootFailedImages?: Faile
     console.log(`\n  ⚠ ${imagesFailed} image(s) failed to sync`);
   }
 }
+
+// ─── Check Mode (read-only drift detection) ─────────────────────────────
+
+export type CheckKind = "new" | "modified" | "retry" | "rename" | "orphan";
+
+export interface CheckChange {
+  kind: CheckKind;
+  title: string;
+  sourceToken?: string;
+  targetToken?: string;
+  reason?: string;
+}
+
+export interface CheckReport {
+  rootChanged: boolean;
+  changes: CheckChange[];
+  unchangedCount: number;
+  totalSourcePages: number;
+}
+
+/**
+ * Walk source tree and compare against saved state without writing anything.
+ * Mirrors the classification logic of syncTreeIncremental so the report
+ * matches what a real sync would do.
+ */
+export function checkSync(
+  wikiClient: WikiClient,
+  sourceNode: WikiNode,
+  state: SyncState,
+): CheckReport {
+  const cli = wikiClient.cli;
+  const report: CheckReport = {
+    rootChanged: false,
+    changes: [],
+    unchangedCount: 0,
+    totalSourcePages: 0,
+  };
+
+  if (sourceNode.objType === "docx") {
+    const editDiffers = sourceNode.objEditTime !== "" &&
+      sourceNode.objEditTime !== (state.rootObjEditTime ?? "");
+    if (editDiffers || state.rootContentHash === "") {
+      const blocks = cli.getBlocks(sourceNode.objToken);
+      const hash = computeContentHash(blocks);
+      if (hash !== state.rootContentHash) report.rootChanged = true;
+    }
+  }
+
+  const visited = new Set<string>();
+  checkTreeRecursive(wikiClient, sourceNode, state, visited, report);
+
+  for (const [srcToken, page] of Object.entries(state.pages)) {
+    if (!visited.has(srcToken)) {
+      report.changes.push({
+        kind: "orphan",
+        title: page.title,
+        sourceToken: srcToken,
+        targetToken: page.targetNodeToken,
+      });
+    }
+  }
+
+  return report;
+}
+
+function checkTreeRecursive(
+  wikiClient: WikiClient,
+  sourceNode: WikiNode,
+  state: SyncState,
+  visited: Set<string>,
+  report: CheckReport,
+): void {
+  const children = wikiClient.listChildren(sourceNode.spaceId, sourceNode.nodeToken);
+  for (const child of children) {
+    report.totalSourcePages++;
+    visited.add(child.nodeToken);
+    const existing = state.pages[child.nodeToken];
+
+    if (!existing) {
+      report.changes.push({
+        kind: "new",
+        title: child.title,
+        sourceToken: child.nodeToken,
+      });
+      if (child.hasChild) {
+        checkTreeRecursive(wikiClient, child, state, visited, report);
+      }
+      continue;
+    }
+
+    if (child.title !== existing.title) {
+      report.changes.push({
+        kind: "rename",
+        title: child.title,
+        sourceToken: child.nodeToken,
+        targetToken: existing.targetNodeToken,
+        reason: `was "${existing.title}"`,
+      });
+    }
+
+    const failedCount = existing.failedImages?.length ?? 0;
+    if (failedCount > 0) {
+      report.changes.push({
+        kind: "retry",
+        title: child.title,
+        sourceToken: child.nodeToken,
+        targetToken: existing.targetNodeToken,
+        reason: `${failedCount} image(s) pending retry`,
+      });
+    } else if (child.objEditTime !== "" && child.objEditTime === existing.objEditTime) {
+      report.unchangedCount++;
+    } else if (child.objType === "docx") {
+      const blocks = wikiClient.cli.getBlocks(child.objToken);
+      const hash = computeContentHash(blocks);
+      if (hash === existing.contentHash) {
+        report.unchangedCount++;
+      } else {
+        report.changes.push({
+          kind: "modified",
+          title: child.title,
+          sourceToken: child.nodeToken,
+          targetToken: existing.targetNodeToken,
+        });
+      }
+    } else {
+      report.unchangedCount++;
+    }
+
+    if (child.hasChild) {
+      checkTreeRecursive(wikiClient, child, state, visited, report);
+    }
+  }
+}
+
+/**
+ * Print the check report. Returns true if the target is in sync with source.
+ */
+export function printCheckReport(
+  report: CheckReport,
+  sourceTitle: string,
+  targetTitle: string,
+  state: SyncState,
+): boolean {
+  const byKind: Record<CheckKind, CheckChange[]> = {
+    new: [], modified: [], retry: [], rename: [], orphan: [],
+  };
+  for (const c of report.changes) byKind[c.kind].push(c);
+
+  console.log(`\n── Sync Check: "${sourceTitle}" → "${targetTitle}" ──`);
+  console.log(`  Last synced:   ${state.lastSyncTime}`);
+  console.log(`  Tracked pages: ${Object.keys(state.pages).length}`);
+  console.log(`  Source pages:  ${report.totalSourcePages}`);
+
+  const totalChanges =
+    report.changes.length + (report.rootChanged ? 1 : 0);
+
+  if (totalChanges === 0) {
+    console.log("\n✓ In sync — target matches source.");
+    return true;
+  }
+
+  console.log("\nPending changes:");
+  if (report.rootChanged) console.log('  ~ MOD    root page');
+
+  const SYM: Record<CheckKind, string> = {
+    new: "+", modified: "~", retry: "⟲", rename: "→", orphan: "-",
+  };
+  const LABEL: Record<CheckKind, string> = {
+    new: "NEW   ", modified: "MOD   ", retry: "RETRY ",
+    rename: "RENAME", orphan: "ORPHAN",
+  };
+  const ORDER: CheckKind[] = ["new", "modified", "retry", "rename", "orphan"];
+  for (const kind of ORDER) {
+    for (const c of byKind[kind]) {
+      const reason = c.reason ? ` — ${c.reason}` : "";
+      console.log(`  ${SYM[kind]} ${LABEL[kind]} "${c.title}"${reason}`);
+    }
+  }
+
+  console.log("\nSummary:");
+  if (byKind.new.length)      console.log(`  New:       ${byKind.new.length}`);
+  if (byKind.modified.length) console.log(`  Modified:  ${byKind.modified.length}`);
+  if (byKind.retry.length)    console.log(`  Retry:     ${byKind.retry.length}`);
+  if (byKind.rename.length)   console.log(`  Renamed:   ${byKind.rename.length}`);
+  if (byKind.orphan.length)   console.log(`  Orphans:   ${byKind.orphan.length}`);
+  if (report.rootChanged)     console.log(`  Root page: changed`);
+  console.log(`  Unchanged: ${report.unchangedCount}`);
+
+  console.log(`\n✗ Out of sync — ${totalChanges} change(s) pending.`);
+  return false;
+}

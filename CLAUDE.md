@@ -15,11 +15,13 @@
 ```bash
 npm run build        # TypeScript compilation → dist/
 npm run lint         # ESLint on src/ and bin/
-npm test             # 127+ fixture-based dry-run checks (no API calls)
+npm test             # Fixture-based dry-run checks (no API calls)
 npm run test:upload  # Real upload validation (requires lark-cli auth)
-npm run pipeline     # Run pipeline via tsx
-npm run preprocess   # Run preprocessor via tsx
+npm run pipeline     # Run pipeline via tsx (src/pipeline.ts)
 ```
+
+> Note: `package.json` also defines `preprocess` and `verify` scripts, but they
+> point to files that no longer exist at those paths — don't rely on them.
 
 ## Repository Structure
 
@@ -40,6 +42,7 @@ src/
 │   ├── analyze.ts         # Classify document structure
 │   ├── highlight.ts       # Extract/apply keyword emphasis
 │   ├── verify.ts          # Block-level structure validation
+│   ├── sync.ts            # Recursively mirror a wiki subtree (incremental + --check)
 │   └── auth.ts            # Feishu authentication
 ├── core/                  # Transformation modules (pure functions)
 │   ├── analyze.ts         # Document classification (narrative|data_table|catalog_table|mixed)
@@ -57,8 +60,18 @@ src/
 │   └── mermaid-patch.ts   # Mermaid diagram whiteboard color patching
 ├── image/
 │   └── images.ts          # Image upload handling
-└── verify/
-    └── verify.ts          # Block-level structure validation
+├── verify/
+│   └── verify.ts          # Block-level structure validation
+├── wiki/                  # Wiki-tree sync: block-copy, state, refs, orphans
+│   ├── sync.ts            # Recursive sync + incremental + checkSync
+│   ├── sync-state.ts      # State persistence + content hashing
+│   ├── block-copy.ts      # Block-level reproduction with image upload
+│   ├── fix-refs.ts        # Rewrite internal doc links after copy
+│   ├── wiki-client.ts     # Thin wrapper over lark-cli wiki APIs
+│   ├── wiki-url.ts        # Parse wiki URLs / bare tokens
+│   └── wiki-types.ts      # Shared types (WikiNode, SyncOptions, …)
+└── browser/
+    └── image-transfer.ts  # Playwright browser session for cross-space images
 
 tests/
 ├── comprehensive-test.sh  # Main test suite (127+ assertions, bash-based)
@@ -69,14 +82,16 @@ tests/
 │   └── sample-numbered-outline.md
 └── highlight-escaped-pipe-test.ts
 
-skills/lark-hirono/        # Claude Code skill integration
+skills/
+├── lark-hirono/           # Skill for the upload/optimize/fetch pipeline
+└── lark-hirono-sync/      # Skill for the wiki sync subcommand
 ```
 
 ## Architecture
 
 ### Processing Pipeline
 
-Two main workflows:
+Three main workflows:
 
 ```
 Upload:   Read → Normalize → Analyze → Preprocess → Split → Highlight
@@ -84,11 +99,18 @@ Upload:   Read → Normalize → Analyze → Preprocess → Split → Highlight
 
 Optimize: Fetch → Normalize → Analyze → Narrative → Preprocess → Split
           → LarkTable → Create → Patch → Whiteboard → Verify
+
+Sync:     ListChildren → LoadState → (per child) classify NEW/MOD/UNCHANGED
+          → BlockCopy (with browser image prefetch) → FixRefs → SaveState
+          → DetectOrphans
+          (--check runs the classify step read-only, without writes)
 ```
 
 ### Key Abstractions
 
 - **`LarkCli`** (`src/cli.ts`): Subprocess wrapper for the `lark-cli` binary. All Feishu API interactions go through this.
+- **`WikiClient`** (`src/wiki/wiki-client.ts`): Higher-level wrapper over `LarkCli` for wiki-tree operations (listChildren, createNode, copyNode, getNode). Used by the sync subsystem.
+- **`SyncState`** (`src/wiki/sync-state.ts`): Persisted per-pair JSON at `~/.config/lark-hirono/sync-state/` recording objEditTime + content hash for each synced page; drives incremental sync and `--check`.
 - **`Config`** (`src/config.ts`): Merged configuration (defaults → `lark-hirono.json` → CLI flags).
 - **`PipelineArgs` / `PipelineResult`** (`src/pipeline.ts`): Orchestration parameters and return values.
 - **Core modules** (`src/core/`): Pure transformation functions. Each takes markdown strings and returns transformed strings. No side effects.
@@ -127,13 +149,20 @@ Each module is self-contained:
 - CLI catches errors and prints to stderr
 - Pipeline logs via conditional `log()` in verbose mode only
 
-### No Runtime Dependencies
+### Runtime Dependencies
 
-The project has zero runtime npm dependencies. It uses only:
-- Node.js built-in APIs (`node:fs`, `node:path`, `node:child_process`)
+The project has **no required** runtime npm dependencies. It uses only:
+- Node.js built-in APIs (`node:fs`, `node:path`, `node:child_process`, …)
 - The `lark-cli` binary (invoked as subprocess)
 
-All devDependencies are build-time only (TypeScript, ESLint, tsx).
+One **optional** runtime dependency exists:
+- `playwright` (declared in `optionalDependencies`) — used by the sync
+  command to download cross-space wiki images through Feishu's internal CDN
+  (which returns 403 to the regular media API). Without Playwright the
+  sync command still runs, but cross-space images are skipped and reported
+  as failures in the sync summary.
+
+All other devDependencies are build-time only (TypeScript, ESLint, tsx).
 
 ## Testing
 
@@ -220,6 +249,32 @@ These are platform limitations that affect code design:
 1. Create `src/commands/<name>.ts` exporting a `run()` function
 2. Register it in `bin/lark-hirono.ts` subcommand dispatcher
 3. Add tests in `tests/comprehensive-test.sh`
+4. If the command is user-facing, add or update a skill under `skills/` (see below)
+
+### Keeping Skills in Sync with Code
+
+`skills/lark-hirono/` and `skills/lark-hirono-sync/` are the Claude Code
+integration surface — they're how a user invokes this tool through Claude.
+Their `SKILL.md` files mirror the CLI, so any user-visible change to a command
+must be reflected there or the skill will drift from reality.
+
+**When code changes require a skill update:**
+
+- Adding, removing, or renaming a CLI flag or subcommand → update the
+  corresponding `SKILL.md` Options section and examples.
+- Changing a flag's semantics or exit-code contract → update the Options
+  description and any Workflow steps that rely on it.
+- Adding a new user-facing command → add it to an existing skill (if
+  thematically related) or create a new `skills/<name>/SKILL.md`.
+- Changing discoverability (what a user would *ask* to invoke the command) →
+  update the `description` / trigger phrases in the skill frontmatter so
+  Claude routes relevant prompts to the skill.
+
+**Implementation-only changes** (refactors, internal helpers, bug fixes that
+don't alter CLI surface) do **not** require skill updates.
+
+After editing code in `src/commands/` or changing `bin/lark-hirono.ts`,
+re-read the matching `SKILL.md` and patch anything now inaccurate.
 
 ### Library Usage
 

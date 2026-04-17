@@ -10,7 +10,7 @@
 import { LarkCli } from "../cli.js";
 import { WikiClient } from "../wiki/wiki-client.js";
 import { parseWikiUrl } from "../wiki/wiki-url.js";
-import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary, recordResultsInState, findOrphans, pruneOrphansFromState } from "../wiki/sync.js";
+import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary, recordResultsInState, findOrphans, pruneOrphansFromState, checkSync, printCheckReport } from "../wiki/sync.js";
 import { closeBrowser } from "../browser/image-transfer.js";
 import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
 import { loadState, saveState, buildInitialState, computeContentHash } from "../wiki/sync-state.js";
@@ -28,7 +28,7 @@ export async function run(args: string[]): Promise<number> {
     }
     if (a.startsWith("--")) {
       const key = a.slice(2);
-      if (["dry-run", "verbose", "numbers", "no-numbers", "force", "status"].includes(key)) {
+      if (["dry-run", "verbose", "numbers", "no-numbers", "force", "status", "check"].includes(key)) {
         flags[key] = true;
       } else {
         flags[key] = args[++i] ?? "";
@@ -54,6 +54,7 @@ export async function run(args: string[]): Promise<number> {
   const headingNumbers = !flags["no-numbers"];
   const force = Boolean(flags.force);
   const status = Boolean(flags.status);
+  const check = Boolean(flags.check);
   const browserState = flags["browser-state"] as string | undefined;
 
   let source, target;
@@ -113,6 +114,18 @@ export async function run(args: string[]): Promise<number> {
       console.log(`Tracked pages: ${Object.keys(existingState.pages).length}`);
     }
     return 0;
+  }
+
+  if (check) {
+    if (!existingState) {
+      console.log(`\n── Sync Check: "${sourceNode.title}" → "${targetNode.title}" ──`);
+      console.log("No previous sync state — a full copy would be performed.");
+      console.log("\n✗ Out of sync — run without --check to perform initial sync.");
+      return 1;
+    }
+    const report = checkSync(wikiClient, sourceNode, existingState);
+    const inSync = printCheckReport(report, sourceNode.title, targetNode.title, existingState);
+    return inSync ? 0 : 1;
   }
 
   const refs: RefMaps = {
@@ -231,8 +244,10 @@ Options:
   --browser-state <path>    Playwright browser state file
                             (default: ~/.config/lark-hirono/browser-state.json)
   --dry-run                 Print source tree without syncing
+  --check                   Diff source vs saved state (read-only);
+                            exit 0 if in sync, 1 if drift or no state
+  --status                  Show saved-state metadata only (offline, no API)
   --force                   Ignore saved state, force full re-sync
-  --status                  Show sync status without syncing
   -v, --verbose             Verbose logging
 
 Mirror Semantics:
@@ -254,6 +269,7 @@ Examples:
     --to https://my.feishu.cn/wiki/DST_TOKEN
 
   lark-hirono sync --from SRC_TOKEN --to DST_TOKEN --dry-run
+  lark-hirono sync --from SRC_TOKEN --to DST_TOKEN --check
   lark-hirono sync --from SRC_TOKEN --to DST_TOKEN --force
   lark-hirono sync --from SRC_TOKEN --to DST_TOKEN --status
 `);

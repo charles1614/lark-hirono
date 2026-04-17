@@ -3,8 +3,10 @@ name: lark-hirono-sync
 description: >-
   Recursively copy/sync a Feishu wiki subtree from one location to another,
   preserving all block-level styles (heading backgrounds, callouts, text colors,
-  table formatting, images) via block-level copy.
-  Triggers on: wiki sync, wiki copy, feishu sync, copy wiki tree, sync wiki pages.
+  table formatting, images) via block-level copy. Also supports a read-only
+  --check mode that diffs source vs target and reports pending changes.
+  Triggers on: wiki sync, wiki copy, feishu sync, copy wiki tree, sync wiki
+  pages, check wiki sync, verify wiki sync, wiki drift, is wiki up to date.
 compatibility: Requires Node.js 20+, lark-cli >= 1.0.9. Playwright optional for image transfer.
 ---
 
@@ -27,7 +29,7 @@ Follow the "First-Time Setup" steps in the main `lark-hirono` skill (install lar
 
 ### 2. Install Playwright + Chromium (required for cross-space images)
 
-Cross-space image downloads via the Feishu API return 403. The sync command uses Playwright with browser session cookies to download images through Feishu's internal CDN instead. Without Playwright, **sync still runs but all cross-space images are silently skipped** — you get documents with missing images.
+Cross-space image downloads via the Feishu API return 403. The sync command uses Playwright with browser session cookies to download images through Feishu's internal CDN instead. Without Playwright, **sync still runs but all cross-space images are skipped** — the sync summary reports the count of failed images and exits with code 1.
 
 Playwright is declared as an `optionalDependency` in package.json. If it wasn't installed automatically:
 
@@ -50,9 +52,9 @@ On first sync with images, Playwright launches a **visible browser window** poin
 |---------|-------|-----|
 | `playwright not installed` error mid-sync | Playwright not in node_modules | `npm install playwright && npx playwright install chromium` |
 | `Cannot launch browser (need display)` | No display (SSH/CI) | Run the first sync from a desktop environment, or copy a valid `browser-state.json` from another machine |
-| Images missing after sync (no errors) | Browser session expired | Delete `~/.config/lark-hirono/browser-state.json` and re-run to trigger a fresh login |
+| Sync summary shows failed images | Browser session expired or download 403 | Delete `~/.config/lark-hirono/browser-state.json` and re-run to trigger a fresh login |
 | All images fail after first failure | `_browserFailed` flag set for process lifetime | Fix the underlying browser issue and re-run the sync command |
-| Images fail silently with only verbose log | Per-image errors are caught and logged, sync continues | Run with `-v` to see which images failed and why |
+| Image upload failures in summary | Upload API failed or verification found empty token | Re-run sync with `--force` to retry; failures are auto-retried (2 attempts) with verification |
 
 ### Prerequisites Summary
 
@@ -72,6 +74,9 @@ lark-hirono sync --from <source-url> --to <target-url> [options]
 - `--no-numbers` — Skip auto-numbered headings (numbering enabled by default)
 - `--browser-state <path>` — Path to Playwright browser state file (default: `~/.config/lark-hirono/browser-state.json`)
 - `--dry-run` — Print source tree structure without copying
+- `--check` — Read-only diff of source vs saved state; reports new/modified/retry/rename/orphan pages. Exit `0` if fully in sync, `1` if drift detected (usable as a CI check)
+- `--status` — Print saved-state metadata only (last sync time, tracked page count); offline, no API calls
+- `--force` — Ignore saved state, force full re-sync
 - `-v, --verbose` — Verbose logging
 
 ---
@@ -89,8 +94,9 @@ For each child node under the source, the tool:
    - Batches of 10 blocks created per API call
    - Tables with >9 rows are created at 9 rows then expanded via `insert_table_row`
    - Auto-created children (table cells, grid columns) mapped by position
-   - Image data uploaded to empty image blocks, then associated via `replace_image` PATCH
+   - Image data uploaded to empty image blocks, then associated via `replace_image` PATCH (retried up to 2 times with post-upload verification)
 5. **Cleans up** auto-created trailing empty paragraphs in callouts and grid columns
+6. **Reports failures** — any images that failed to download or upload are logged, included in the sync summary, and recorded in the sync state JSON
 
 This preserves **all** block-level styles: heading backgrounds, table cell colors, callout emojis/borders, paragraph backgrounds, equations, code block languages, nested list indentation.
 
@@ -130,6 +136,21 @@ lark-hirono sync \
   --from https://my.feishu.cn/wiki/SOURCE_TOKEN \
   --to https://my.feishu.cn/wiki/TARGET_TOKEN \
   -v
+```
+
+### Step 3: Verify Sync Is Up to Date
+
+`--check` walks the source tree and compares against the saved state. It
+reports what *would* change on the next sync (new/modified/retry/rename/
+orphan pages) without performing any writes. Exit status is `0` when
+fully in sync and `1` when drift is detected, so it can be used as a CI
+or pre-publish check.
+
+```bash
+lark-hirono sync \
+  --from https://my.feishu.cn/wiki/SOURCE_TOKEN \
+  --to https://my.feishu.cn/wiki/TARGET_TOKEN \
+  --check
 ```
 
 ---

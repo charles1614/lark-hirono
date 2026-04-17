@@ -10,7 +10,7 @@
 import { LarkCli } from "../cli.js";
 import { WikiClient } from "../wiki/wiki-client.js";
 import { parseWikiUrl } from "../wiki/wiki-url.js";
-import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary, recordResultsInState } from "../wiki/sync.js";
+import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary, recordResultsInState, findOrphans, pruneOrphansFromState } from "../wiki/sync.js";
 import { closeBrowser } from "../browser/image-transfer.js";
 import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
 import { loadState, saveState, buildInitialState, computeContentHash } from "../wiki/sync-state.js";
@@ -130,9 +130,11 @@ export async function run(args: string[]): Promise<number> {
       console.log(`\nIncremental sync "${sourceNode.title}" → "${targetNode.title}"…`);
       console.log(`  (last synced: ${existingState.lastSyncTime})\n`);
 
+      const visited = new Set<string>();
       results = await syncTreeIncremental(
         wikiClient, sourceNode, targetNode, existingState, opts, refs,
         () => saveState(existingState),
+        visited,
       );
 
       // Fix internal document references
@@ -149,6 +151,20 @@ export async function run(args: string[]): Promise<number> {
           }
         }
         fixupReferences(cli, refs, { verbose });
+      }
+
+      // Detect orphans — state entries whose source was removed or moved out.
+      // We report but do NOT delete: wiki has no safe, lark-cli-wrapped trash
+      // endpoint, and removing target pages silently risks data loss.
+      const orphans = findOrphans(existingState, visited);
+      if (orphans.length > 0) {
+        console.log(`\n  ⚠ ${orphans.length} orphan(s) detected (source deleted or moved out of subtree):`);
+        for (const o of orphans) {
+          console.log(`    - "${o.title}" (target ${o.targetNodeToken})`);
+        }
+        console.log(`  These target pages remain but are no longer tracked in state.`);
+        console.log(`  Delete them manually in Feishu, then re-run with --force to rebuild state cleanly.`);
+        pruneOrphansFromState(existingState, orphans);
       }
 
       // Save updated state

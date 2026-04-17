@@ -176,6 +176,9 @@ export async function syncRootContent(
 /**
  * Incremental sync — only create new nodes and update modified ones.
  * Compares source tree against saved state to skip unchanged pages.
+ *
+ * `visited` accumulates every source nodeToken seen this run; the caller
+ * uses it after the top-level call to detect orphans in state.pages.
  */
 export async function syncTreeIncremental(
   wikiClient: WikiClient,
@@ -185,6 +188,7 @@ export async function syncTreeIncremental(
   opts: SyncOptions,
   refs?: RefMaps,
   onProgress?: () => void,
+  visited?: Set<string>,
 ): Promise<SyncNodeResult[]> {
   const cli = wikiClient.cli;
 
@@ -234,6 +238,7 @@ export async function syncTreeIncremental(
     const child = children[i];
     const prefix = `[${i + 1}/${total}]`;
     const existing = state.pages[child.nodeToken];
+    visited?.add(child.nodeToken);
 
     if (!existing) {
       // ── New node: full copy ─────────────────────────────────────
@@ -247,14 +252,31 @@ export async function syncTreeIncremental(
       if (result.ok && result.targetToken) {
         const emptyRefs: RefMaps = { nodeMap: new Map(), objMap: new Map(), docMap: new Map() };
         recordResultsInState(state, [result], refs ?? emptyRefs, wikiClient);
+        // Also mark any descendants that were just recorded as visited
+        markVisited(result, visited);
       }
       sleep(500);
       onProgress?.();
       continue;
     }
 
+    // Propagate title rename regardless of content outcome. update_title
+    // only applies to docx/doc/shortcut — non-docx nodes silently skip.
+    if (child.title !== existing.title && (child.objType === "docx" || child.objType === "doc")) {
+      if (wikiClient.updateNodeTitle(targetNode.spaceId, existing.targetNodeToken, child.title)) {
+        console.log(`${prefix} RENAME: "${existing.title}" → "${child.title}"`);
+        existing.title = child.title;
+      } else {
+        console.error(`${prefix} WARNING: title update failed for "${child.title}"`);
+      }
+    }
+
+    // A prior run left images unuploaded for this page; force a re-copy
+    // even if source metadata/content hasn't changed.
+    const forceRetry = (existing.failedImages?.length ?? 0) > 0;
+
     // ── Existing node: check for changes ──────────────────────────
-    if (child.objEditTime !== "" && child.objEditTime === existing.objEditTime) {
+    if (!forceRetry && child.objEditTime !== "" && child.objEditTime === existing.objEditTime) {
       // Timestamp unchanged — skip
       if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (unchanged)`);
       // Populate nodeMap/objMap so fixupReferences can rewrite links pointing here
@@ -270,19 +292,19 @@ export async function syncTreeIncremental(
       // Still recurse into children if it has any
       if (child.hasChild) {
         const childResults = await syncChildrenIncremental(
-          wikiClient, child, existing, state, opts, refs,
+          wikiClient, child, existing, state, opts, refs, onProgress, visited,
         );
         results[results.length - 1].children = childResults;
       }
       continue;
     }
 
-    // Timestamp changed — check content hash
+    // Timestamp changed (or forced retry) — check content hash
     if (child.objType === "docx") {
       const sourceBlocks = cli.getBlocks(child.objToken);
       const hash = computeContentHash(sourceBlocks);
 
-      if (hash === existing.contentHash) {
+      if (!forceRetry && hash === existing.contentHash) {
         // Content identical (metadata-only change)
         if (opts.verbose) console.log(`${prefix} SKIP: "${child.title}" (metadata-only change)`);
         existing.objEditTime = child.objEditTime;
@@ -296,8 +318,9 @@ export async function syncTreeIncremental(
           title: child.title, strategy: "unchanged", ok: true, children: [],
         });
       } else {
-        // Content changed — clear and re-copy
-        console.log(`${prefix} MOD: "${child.title}" — updating…`);
+        // Content changed (or forced retry) — clear and re-copy
+        const label = forceRetry && hash === existing.contentHash ? "RETRY" : "MOD";
+        console.log(`${prefix} ${label}: "${child.title}" — updating…`);
         clearDocContent(cli, existing.targetObjToken);
 
         const imageCache = await prefetchImages(sourceBlocks, child.nodeToken, {
@@ -332,7 +355,6 @@ export async function syncTreeIncremental(
 
         existing.objEditTime = child.objEditTime;
         existing.contentHash = hash;
-        existing.title = child.title;
         existing.lastSynced = new Date().toISOString();
         if (copyResult.failedImages.length > 0) {
           existing.failedImages = copyResult.failedImages.map(f => f.sourceToken);
@@ -363,7 +385,7 @@ export async function syncTreeIncremental(
     // Recurse into children
     if (child.hasChild) {
       const childResults = await syncChildrenIncremental(
-        wikiClient, child, existing, state, opts, refs, onProgress,
+        wikiClient, child, existing, state, opts, refs, onProgress, visited,
       );
       results[results.length - 1].children = childResults;
     }
@@ -387,6 +409,7 @@ async function syncChildrenIncremental(
   opts: SyncOptions,
   refs?: RefMaps,
   onProgress?: () => void,
+  visited?: Set<string>,
 ): Promise<SyncNodeResult[]> {
   // Build a temporary "target node" reference for recursion
   const targetNode: WikiNode = {
@@ -408,7 +431,14 @@ async function syncChildrenIncremental(
   }
   targetNode.spaceId = resolved.spaceId;
 
-  return syncTreeIncremental(wikiClient, sourceChild, targetNode, state, opts, refs, onProgress);
+  return syncTreeIncremental(wikiClient, sourceChild, targetNode, state, opts, refs, onProgress, visited);
+}
+
+/** Walk a SyncNodeResult tree and mark every source token as visited. */
+function markVisited(result: SyncNodeResult, visited?: Set<string>): void {
+  if (!visited) return;
+  visited.add(result.sourceToken);
+  for (const c of result.children) markVisited(c, visited);
 }
 
 // ─── Internal ───────────────────────────────────────────────────────────
@@ -640,6 +670,38 @@ function printDryRunNode(node: WikiNode, prefix: string): void {
 
 function sleep(ms: number): void {
   execSync(`sleep ${ms / 1000}`);
+}
+
+// ─── Orphan Detection ───────────────────────────────────────────────────
+
+export interface Orphan {
+  sourceToken: string;
+  targetNodeToken: string;
+  title: string;
+}
+
+/**
+ * Find pages in state.pages whose source nodeToken was NOT visited this run.
+ * These represent source pages that have been deleted or moved out of the
+ * subtree. The caller decides whether to report or prune.
+ */
+export function findOrphans(state: SyncState, visited: Set<string>): Orphan[] {
+  const orphans: Orphan[] = [];
+  for (const [srcToken, page] of Object.entries(state.pages)) {
+    if (!visited.has(srcToken)) {
+      orphans.push({
+        sourceToken: srcToken,
+        targetNodeToken: page.targetNodeToken,
+        title: page.title,
+      });
+    }
+  }
+  return orphans;
+}
+
+/** Remove orphaned entries from state.pages (state-only, does not touch target). */
+export function pruneOrphansFromState(state: SyncState, orphans: Orphan[]): void {
+  for (const o of orphans) delete state.pages[o.sourceToken];
 }
 
 // ─── State Recording ───────────────────────────────────────────────────

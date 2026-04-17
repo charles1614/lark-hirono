@@ -85,6 +85,22 @@ export class WikiClient {
     return mapNode(n);
   }
 
+  // ─── Update ─────────────────────────────────────────────────────────
+
+  /**
+   * Update a wiki node's title. Supports docx/doc/shortcut nodes.
+   * Returns true on success, false on any error.
+   */
+  updateNodeTitle(spaceId: string, nodeToken: string, title: string): boolean {
+    const result = this.exec([
+      "api", "POST",
+      `/open-apis/wiki/v2/spaces/${spaceId}/nodes/${nodeToken}/update_title`,
+      "--data", JSON.stringify({ title }),
+    ]);
+    // Success when CLI returned a parsed response and API code is 0 (or absent).
+    return result !== null && (result.code ?? 0) === 0;
+  }
+
   // ─── Create ─────────────────────────────────────────────────────────
 
   /** Create an empty wiki node. */

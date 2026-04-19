@@ -25,6 +25,7 @@ export async function syncTree(
   targetSpaceId: string,
   opts: SyncOptions,
   refs?: RefMaps,
+  onTargetCreated?: (info: TargetCreatedInfo) => void,
 ): Promise<SyncNodeResult[]> {
   const children = wikiClient.listChildren(
     sourceNode.spaceId,
@@ -64,6 +65,7 @@ export async function syncTree(
 
     const result = await syncNode(
       wikiClient, child, targetParentToken, targetSpaceId, opts, prefix, refs,
+      onTargetCreated,
     );
     results.push(result);
     sleep(500);
@@ -189,6 +191,7 @@ export async function syncTreeIncremental(
   refs?: RefMaps,
   onProgress?: () => void,
   visited?: Set<string>,
+  rootFailedImagesOut?: FailedImage[],
 ): Promise<SyncNodeResult[]> {
   const cli = wikiClient.cli;
 
@@ -209,8 +212,12 @@ export async function syncTreeIncremental(
 
       if (hash !== state.rootContentHash) {
         console.log("  Root page content changed — updating…");
-        await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
+        const rootResult = await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
+        if (rootFailedImagesOut) {
+          for (const f of rootResult.failedImages) rootFailedImagesOut.push(f);
+        }
         state.rootContentHash = hash;
+        onProgress?.();
       } else if (opts.verbose) {
         console.log("  Root page: metadata changed but content identical — skipping");
       }
@@ -245,6 +252,23 @@ export async function syncTreeIncremental(
       console.log(`${prefix} NEW: "${child.title}"`);
       const result = await syncNode(
         wikiClient, child, targetNode.nodeToken, targetNode.spaceId, opts, prefix, refs,
+        (info) => {
+          // Pre-register: write a placeholder entry to state the moment the
+          // target node is created, before block copy starts. A kill during
+          // block copy leaves contentHash="" so the next run re-enters the
+          // MOD path (clear + recopy) into the same target node.
+          state.pages[info.sourceToken] = {
+            targetNodeToken: info.targetNodeToken,
+            targetObjToken: info.targetObjToken,
+            sourceObjToken: info.sourceObjToken,
+            title: info.title,
+            objEditTime: "",
+            contentHash: "",
+            lastSynced: new Date().toISOString(),
+          };
+          visited?.add(info.sourceToken);
+          onProgress?.();
+        },
       );
       results.push(result);
 
@@ -490,6 +514,16 @@ function buildServerCopyResults(
   return results;
 }
 
+export interface TargetCreatedInfo {
+  sourceToken: string;
+  targetNodeToken: string;
+  targetObjToken: string;
+  sourceObjToken: string;
+  title: string;
+  objType: string;
+  objEditTime: string;
+}
+
 async function syncNode(
   wikiClient: WikiClient,
   sourceNode: WikiNode,
@@ -498,6 +532,7 @@ async function syncNode(
   opts: SyncOptions,
   prefix: string,
   refs?: RefMaps,
+  onTargetCreated?: (info: TargetCreatedInfo) => void,
 ): Promise<SyncNodeResult> {
   console.log(`${prefix} Copying: "${sourceNode.title}" (${sourceNode.objType || "node"})…`);
 
@@ -524,6 +559,16 @@ async function syncNode(
       refs.docMap.set(copied.nodeToken, copied.objToken);
     }
 
+    onTargetCreated?.({
+      sourceToken: sourceNode.nodeToken,
+      targetNodeToken: copied.nodeToken,
+      targetObjToken: copied.objToken,
+      sourceObjToken: sourceNode.objToken,
+      title: sourceNode.title,
+      objType: sourceNode.objType,
+      objEditTime: sourceNode.objEditTime,
+    });
+
     // Recursively match children for state tracking and ref fixup
     const childResults = sourceNode.hasChild
       ? buildServerCopyResults(
@@ -547,13 +592,22 @@ async function syncNode(
       targetSpaceId, targetParentToken, sourceNode.title, "docx",
     );
     const pToken = placeholder?.nodeToken ?? null;
-    if (pToken) {
+    if (pToken && placeholder) {
       console.log(`${prefix}   Created placeholder → ${pToken}`);
+      onTargetCreated?.({
+        sourceToken: sourceNode.nodeToken,
+        targetNodeToken: pToken,
+        targetObjToken: placeholder.objToken,
+        sourceObjToken: sourceNode.objToken,
+        title: sourceNode.title,
+        objType: sourceNode.objType,
+        objEditTime: sourceNode.objEditTime,
+      });
     } else {
       console.error(`${prefix}   FAIL: could not create placeholder`);
     }
     const childResults = sourceNode.hasChild && pToken
-      ? await syncTree(wikiClient, sourceNode, pToken, targetSpaceId, opts, refs)
+      ? await syncTree(wikiClient, sourceNode, pToken, targetSpaceId, opts, refs, onTargetCreated)
       : [];
     return {
       sourceToken: sourceNode.nodeToken, targetToken: pToken,
@@ -587,6 +641,18 @@ async function syncNode(
     refs.objMap.set(sourceNode.objToken, targetObjToken);
     refs.docMap.set(newNode.nodeToken, targetObjToken);
   }
+
+  // Pre-register in state BEFORE block copy so a mid-copy kill is resumable
+  // as a MOD into the same target node (no duplicate).
+  onTargetCreated?.({
+    sourceToken: sourceNode.nodeToken,
+    targetNodeToken: newNode.nodeToken,
+    targetObjToken,
+    sourceObjToken: sourceNode.objToken,
+    title: sourceNode.title,
+    objType: sourceNode.objType,
+    objEditTime: sourceNode.objEditTime,
+  });
 
   // Fetch source blocks
   const sourceBlocks = wikiClient.cli.getBlocks(sourceNode.objToken);
@@ -645,7 +711,7 @@ async function syncNode(
 
   // Recurse into children
   const childResults = sourceNode.hasChild
-    ? await syncTree(wikiClient, sourceNode, newNode.nodeToken, targetSpaceId, opts, refs)
+    ? await syncTree(wikiClient, sourceNode, newNode.nodeToken, targetSpaceId, opts, refs, onTargetCreated)
     : [];
 
   console.log(`${prefix}   OK (block-copy)`);

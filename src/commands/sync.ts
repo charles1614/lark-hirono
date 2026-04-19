@@ -10,10 +10,10 @@
 import { LarkCli } from "../cli.js";
 import { WikiClient } from "../wiki/wiki-client.js";
 import { parseWikiUrl } from "../wiki/wiki-url.js";
-import { syncTree, syncRootContent, syncTreeIncremental, printTree, printSummary, recordResultsInState, findOrphans, pruneOrphansFromState, checkSync, printCheckReport } from "../wiki/sync.js";
+import { syncTreeIncremental, printTree, printSummary, findOrphans, pruneOrphansFromState, checkSync, printCheckReport } from "../wiki/sync.js";
 import { closeBrowser } from "../browser/image-transfer.js";
 import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
-import { loadState, saveState, buildInitialState, computeContentHash } from "../wiki/sync-state.js";
+import { loadState, saveState, buildInitialState } from "../wiki/sync-state.js";
 import type { FailedImage } from "../wiki/block-copy.js";
 import type { SyncOptions, SyncNodeResult } from "../wiki/wiki-types.js";
 
@@ -135,41 +135,62 @@ export async function run(args: string[]): Promise<number> {
   };
 
   let results: SyncNodeResult[];
-  let rootFailedImages: FailedImage[] = [];
+  const rootFailedImages: FailedImage[] = [];
+
+  // Unify first-run and incremental: build an empty state up front if none
+  // exists, persist it immediately, then always go through the incremental
+  // path. This gives us per-child persistence on first run — a kill after
+  // any child completes is resumable with no duplicate target nodes.
+  const isResume = existingState !== null;
+  const state = existingState ?? buildInitialState(
+    sourceNode.nodeToken,
+    targetNode.nodeToken,
+    "",
+    "",
+  );
+  if (!isResume) {
+    saveState(state);
+  }
 
   try {
-    if (existingState) {
-      // ── Incremental sync ───────────────────────────────────────────
+    if (isResume) {
       console.log(`\nIncremental sync "${sourceNode.title}" → "${targetNode.title}"…`);
-      console.log(`  (last synced: ${existingState.lastSyncTime})\n`);
+      console.log(`  (last synced: ${state.lastSyncTime})\n`);
+    } else {
+      console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
+    }
 
-      const visited = new Set<string>();
-      results = await syncTreeIncremental(
-        wikiClient, sourceNode, targetNode, existingState, opts, refs,
-        () => saveState(existingState),
-        visited,
-      );
+    const visited = new Set<string>();
+    results = await syncTreeIncremental(
+      wikiClient, sourceNode, targetNode, state, opts, refs,
+      () => saveState(state),
+      visited,
+      rootFailedImages,
+    );
 
-      // Fix internal document references
-      // docMap contains new/modified pages; also add all known unchanged pages
-      // so fixupReferences can scan them for links to newly-synced pages
+    // Fix internal document references. On resume before firstRunComplete,
+    // force a fixupReferences pass even when nothing changed this run —
+    // the prior interrupted run may not have gotten there.
+    const needFixup = refs.docMap.size > 0 || state.firstRunComplete !== true;
+    if (needFixup) {
+      if (targetNode.objToken) {
+        refs.docMap.set(targetNode.nodeToken, targetNode.objToken);
+      }
+      for (const page of Object.values(state.pages)) {
+        if (!refs.docMap.has(page.targetNodeToken) && page.targetObjToken) {
+          refs.docMap.set(page.targetNodeToken, page.targetObjToken);
+        }
+      }
       if (refs.docMap.size > 0) {
-        // Include root page so its outbound links are also scanned
-        if (targetNode.objToken) {
-          refs.docMap.set(targetNode.nodeToken, targetNode.objToken);
-        }
-        for (const page of Object.values(existingState.pages)) {
-          if (!refs.docMap.has(page.targetNodeToken) && page.targetObjToken) {
-            refs.docMap.set(page.targetNodeToken, page.targetObjToken);
-          }
-        }
         fixupReferences(cli, refs, { verbose });
       }
+    }
 
-      // Detect orphans — state entries whose source was removed or moved out.
-      // We report but do NOT delete: wiki has no safe, lark-cli-wrapped trash
-      // endpoint, and removing target pages silently risks data loss.
-      const orphans = findOrphans(existingState, visited);
+    // Orphan detection is only meaningful once a full sync has landed.
+    // Before firstRunComplete, "missing" source tokens may just be pages
+    // a prior interrupted run never reached.
+    if (state.firstRunComplete) {
+      const orphans = findOrphans(state, visited);
       if (orphans.length > 0) {
         console.log(`\n  ⚠ ${orphans.length} orphan(s) detected (source deleted or moved out of subtree):`);
         for (const o of orphans) {
@@ -177,41 +198,12 @@ export async function run(args: string[]): Promise<number> {
         }
         console.log(`  These target pages remain but are no longer tracked in state.`);
         console.log(`  Delete them manually in Feishu, then re-run with --force to rebuild state cleanly.`);
-        pruneOrphansFromState(existingState, orphans);
+        pruneOrphansFromState(state, orphans);
       }
-
-      // Save updated state
-      saveState(existingState);
-    } else {
-      // ── First-run: full copy ───────────────────────────────────────
-      console.log(`\nSyncing "${sourceNode.title}" → "${targetNode.title}"…\n`);
-
-      // Mirror root page content (source → target)
-      const rootResult = await syncRootContent(wikiClient, sourceNode, targetNode, opts, refs);
-      rootFailedImages = rootResult.failedImages;
-
-      results = await syncTree(
-        wikiClient, sourceNode, targetNode.nodeToken, targetNode.spaceId, opts, refs,
-      );
-
-      // Fix internal document references
-      if (refs.docMap.size > 0) {
-        fixupReferences(cli, refs, { verbose });
-      }
-
-      // Build and save initial state
-      const rootBlocks = sourceNode.objType === "docx"
-        ? cli.getBlocks(sourceNode.objToken) : [];
-      const state = buildInitialState(
-        sourceNode.nodeToken,
-        targetNode.nodeToken,
-        computeContentHash(rootBlocks),
-        sourceNode.objEditTime,
-      );
-      // Record all successfully synced pages
-      recordResultsInState(state, results, refs, wikiClient);
-      saveState(state);
     }
+
+    state.firstRunComplete = true;
+    saveState(state);
   } finally {
     await closeBrowser();
   }

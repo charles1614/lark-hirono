@@ -20,6 +20,12 @@ export interface SyncState {
   rootContentHash: string;
   /** objEditTime of the root node at last sync, for fast change detection */
   rootObjEditTime?: string;
+  /**
+   * True once a full sync (tree copy + fixupReferences) has completed at
+   * least once. Absent/false means a prior run was interrupted; the next
+   * run must force fixupReferences and skip orphan pruning.
+   */
+  firstRunComplete?: boolean;
   pages: Record<string, PageState>;
 }
 
@@ -117,6 +123,7 @@ export function buildInitialState(
     lastSyncTime: new Date().toISOString(),
     rootContentHash,
     rootObjEditTime: rootObjEditTime ?? "",
+    firstRunComplete: false,
     pages: {},
   };
 }

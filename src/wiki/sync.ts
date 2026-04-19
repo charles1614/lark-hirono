@@ -192,6 +192,7 @@ export async function syncTreeIncremental(
   onProgress?: () => void,
   visited?: Set<string>,
   rootFailedImagesOut?: FailedImage[],
+  presentTargets?: Set<string>,
 ): Promise<SyncNodeResult[]> {
   const cli = wikiClient.cli;
 
@@ -289,6 +290,21 @@ export async function syncTreeIncremental(
       continue;
     }
 
+    // ── Heal check: target deleted out-of-band ──────────────────
+    // If we pre-walked the target tree and the tracked target node isn't
+    // there, re-create in place regardless of source state. This covers
+    // the "source unchanged but target deleted" case that the MOD-branch
+    // heal (below) can't reach.
+    if (presentTargets && !presentTargets.has(existing.targetNodeToken)) {
+      console.log(`${prefix} HEAL: target deleted — re-creating "${child.title}"…`);
+      delete state.pages[child.nodeToken];
+      const healResult = await runAsNew(child, prefix);
+      results.push(healResult);
+      sleep(500);
+      onProgress?.();
+      continue;
+    }
+
     // Propagate title rename regardless of content outcome. update_title
     // only applies to docx/doc/shortcut — non-docx nodes silently skip.
     if (child.title !== existing.title && (child.objType === "docx" || child.objType === "doc")) {
@@ -321,7 +337,7 @@ export async function syncTreeIncremental(
       // Still recurse into children if it has any
       if (child.hasChild) {
         const childResults = await syncChildrenIncremental(
-          wikiClient, child, existing, state, opts, refs, onProgress, visited,
+          wikiClient, child, existing, state, opts, refs, onProgress, visited, presentTargets,
         );
         results[results.length - 1].children = childResults;
       }
@@ -428,7 +444,7 @@ export async function syncTreeIncremental(
     // Recurse into children
     if (child.hasChild) {
       const childResults = await syncChildrenIncremental(
-        wikiClient, child, existing, state, opts, refs, onProgress, visited,
+        wikiClient, child, existing, state, opts, refs, onProgress, visited, presentTargets,
       );
       results[results.length - 1].children = childResults;
     }
@@ -453,6 +469,7 @@ async function syncChildrenIncremental(
   refs?: RefMaps,
   onProgress?: () => void,
   visited?: Set<string>,
+  presentTargets?: Set<string>,
 ): Promise<SyncNodeResult[]> {
   // Build a temporary "target node" reference for recursion
   const targetNode: WikiNode = {
@@ -474,7 +491,10 @@ async function syncChildrenIncremental(
   }
   targetNode.spaceId = resolved.spaceId;
 
-  return syncTreeIncremental(wikiClient, sourceChild, targetNode, state, opts, refs, onProgress, visited);
+  return syncTreeIncremental(
+    wikiClient, sourceChild, targetNode, state, opts, refs, onProgress, visited,
+    undefined, presentTargets,
+  );
 }
 
 /** Walk a SyncNodeResult tree and mark every source token as visited. */
@@ -1004,6 +1024,20 @@ function collectTargetTokens(
     out.add(c.nodeToken);
     if (c.hasChild) collectTargetTokens(wikiClient, c, out);
   }
+}
+
+/**
+ * Public wrapper: walk the target subtree once and return every present
+ * nodeToken. Used by the sync command to pre-detect MISSING pages so the
+ * incremental loop can heal them even when the source is unchanged.
+ */
+export function buildPresentTargets(
+  wikiClient: WikiClient,
+  targetRoot: WikiNode,
+): Set<string> {
+  const out = new Set<string>();
+  collectTargetTokens(wikiClient, targetRoot, out);
+  return out;
 }
 
 function checkTreeRecursive(

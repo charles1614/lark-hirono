@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, renameSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -103,6 +103,82 @@ export function computeContentHash(blocks: Record<string, unknown>[]): string {
   return createHash("sha256")
     .update(JSON.stringify(stripped))
     .digest("hex");
+}
+
+// ─── Cross-Pair Lookup ──────────────────────────────────────────────────
+
+/** Aggregate mappings across every on-disk sync-state pair. */
+export interface CrossPairMapping {
+  /** source nodeToken → target nodeToken */
+  nodeMap: Map<string, string>;
+  /** source objToken → target objToken */
+  objMap: Map<string, string>;
+}
+
+/** Load every valid v1 sync-state file under STATE_DIR. */
+export function loadAllStates(): SyncState[] {
+  let files: string[];
+  try {
+    files = readdirSync(STATE_DIR);
+  } catch {
+    return [];
+  }
+  const out: SyncState[] = [];
+  for (const f of files) {
+    if (!f.endsWith(".json")) continue;
+    try {
+      const raw = readFileSync(join(STATE_DIR, f), "utf-8");
+      const data = JSON.parse(raw) as Record<string, unknown>;
+      if (data.version === 1) out.push(data as unknown as SyncState);
+    } catch { /* skip unreadable */ }
+  }
+  return out;
+}
+
+/**
+ * Merge every on-disk sync-state's page mappings into a single lookup table.
+ * When the same source token appears in multiple states, the entry with the
+ * most recent `lastSynced` wins.
+ *
+ * Pass `exclude` to omit a specific pair (usually the current run's state,
+ * since the caller already has those mappings in-memory).
+ *
+ * Root-page mappings are NOT included — state files don't record obj tokens
+ * for the root, only for child pages.
+ */
+export function buildCrossPairMapping(
+  exclude?: { sourceRoot: string; targetRoot: string },
+): CrossPairMapping {
+  const nodeMap = new Map<string, string>();
+  const objMap = new Map<string, string>();
+  const nodeFresh = new Map<string, string>();
+  const objFresh = new Map<string, string>();
+
+  for (const s of loadAllStates()) {
+    if (
+      exclude &&
+      s.sourceRoot === exclude.sourceRoot &&
+      s.targetRoot === exclude.targetRoot
+    ) continue;
+
+    for (const [srcToken, page] of Object.entries(s.pages)) {
+      const ts = page.lastSynced ?? "";
+      const prevNode = nodeFresh.get(srcToken);
+      if (prevNode === undefined || ts > prevNode) {
+        nodeMap.set(srcToken, page.targetNodeToken);
+        nodeFresh.set(srcToken, ts);
+      }
+      if (page.sourceObjToken && page.targetObjToken) {
+        const prevObj = objFresh.get(page.sourceObjToken);
+        if (prevObj === undefined || ts > prevObj) {
+          objMap.set(page.sourceObjToken, page.targetObjToken);
+          objFresh.set(page.sourceObjToken, ts);
+        }
+      }
+    }
+  }
+
+  return { nodeMap, objMap };
 }
 
 // ─── State Builder ──────────────────────────────────────────────────────

@@ -10,10 +10,10 @@
 import { LarkCli } from "../cli.js";
 import { WikiClient } from "../wiki/wiki-client.js";
 import { parseWikiUrl } from "../wiki/wiki-url.js";
-import { syncTreeIncremental, printTree, printSummary, findOrphans, pruneOrphansFromState, checkSync, printCheckReport } from "../wiki/sync.js";
+import { syncTreeIncremental, printTree, printSummary, findOrphans, pruneOrphansFromState, checkSync, printCheckReport, buildPresentTargets } from "../wiki/sync.js";
 import { closeBrowser } from "../browser/image-transfer.js";
 import { fixupReferences, type RefMaps } from "../wiki/fix-refs.js";
-import { loadState, saveState, buildInitialState } from "../wiki/sync-state.js";
+import { loadState, saveState, buildInitialState, buildCrossPairMapping } from "../wiki/sync-state.js";
 import type { FailedImage } from "../wiki/block-copy.js";
 import type { SyncOptions, SyncNodeResult } from "../wiki/wiki-types.js";
 
@@ -161,11 +161,16 @@ export async function run(args: string[]): Promise<number> {
     }
 
     const visited = new Set<string>();
+    // Pre-walk the target tree so the incremental loop can heal pages whose
+    // target was deleted out-of-band, even when the source is unchanged.
+    // One target-tree walk; no per-page API calls.
+    const presentTargets = isResume ? buildPresentTargets(wikiClient, targetNode) : undefined;
     results = await syncTreeIncremental(
       wikiClient, sourceNode, targetNode, state, opts, refs,
       () => saveState(state),
       visited,
       rootFailedImages,
+      presentTargets,
     );
 
     // Fix internal document references. On resume before firstRunComplete,
@@ -182,6 +187,24 @@ export async function run(args: string[]): Promise<number> {
         }
       }
       if (refs.docMap.size > 0) {
+        // Augment node/obj maps with every other sync-state on disk so
+        // links across sync pairs get rewritten too. Don't touch docMap —
+        // we only scan pages in the current pair's write scope.
+        const crossPair = buildCrossPairMapping({
+          sourceRoot: state.sourceRoot,
+          targetRoot: state.targetRoot,
+        });
+        let addedNodes = 0;
+        let addedObjs = 0;
+        for (const [src, tgt] of crossPair.nodeMap) {
+          if (!refs.nodeMap.has(src)) { refs.nodeMap.set(src, tgt); addedNodes++; }
+        }
+        for (const [src, tgt] of crossPair.objMap) {
+          if (!refs.objMap.has(src)) { refs.objMap.set(src, tgt); addedObjs++; }
+        }
+        if (verbose && (addedNodes > 0 || addedObjs > 0)) {
+          console.log(`  Cross-pair refs: +${addedNodes} node, +${addedObjs} obj`);
+        }
         fixupReferences(cli, refs, { verbose });
       }
     }

@@ -74,7 +74,7 @@ lark-hirono sync --from <source-url> --to <target-url> [options]
 - `--no-numbers` — Skip auto-numbered headings (numbering enabled by default)
 - `--browser-state <path>` — Path to Playwright browser state file (default: `~/.config/lark-hirono/browser-state.json`)
 - `--dry-run` — Print source tree structure without copying
-- `--check` — Read-only diff of source vs saved state; reports new/modified/retry/rename/orphan pages. Exit `0` if fully in sync, `1` if drift detected (usable as a CI check)
+- `--check` — Read-only diff of source vs saved state; also walks the target tree to detect pages deleted out-of-band. Reports new/modified/missing/retry/rename/orphan pages. Exit `0` if fully in sync, `1` if drift detected (usable as a CI check). Pages flagged `missing` are auto-recreated by the next `sync` that touches them.
 - `--status` — Print saved-state metadata only (last sync time, tracked page count); offline, no API calls
 - `--force` — Ignore saved state, force full re-sync
 - `-v, --verbose` — Verbose logging
@@ -140,11 +140,13 @@ lark-hirono sync \
 
 ### Step 3: Verify Sync Is Up to Date
 
-`--check` walks the source tree and compares against the saved state. It
-reports what *would* change on the next sync (new/modified/retry/rename/
-orphan pages) without performing any writes. Exit status is `0` when
-fully in sync and `1` when drift is detected, so it can be used as a CI
-or pre-publish check.
+`--check` walks both the source and target trees and compares against
+the saved state. It reports what *would* change on the next sync
+(new/modified/missing/retry/rename/orphan pages) without performing any
+writes. `missing` flags pages whose target was deleted out-of-band —
+the next `sync` that touches them will re-create them in place.
+Exit status is `0` when fully in sync and `1` when drift is detected,
+so it can be used as a CI or pre-publish check.
 
 ```bash
 lark-hirono sync \

@@ -123,7 +123,7 @@ export async function run(args: string[]): Promise<number> {
       console.log("\n✗ Out of sync — run without --check to perform initial sync.");
       return 1;
     }
-    const report = checkSync(wikiClient, sourceNode, existingState);
+    const report = checkSync(wikiClient, sourceNode, targetNode, existingState);
     const inSync = printCheckReport(report, sourceNode.title, targetNode.title, existingState);
     return inSync ? 0 : 1;
   }

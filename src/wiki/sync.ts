@@ -241,6 +241,38 @@ export async function syncTreeIncremental(
   const results: SyncNodeResult[] = [];
   const total = children.length;
 
+  // Shared helper: run a child through the NEW-branch pipeline (full syncNode
+  // with pre-register callback + final state recording). Used both for
+  // genuinely new children and for heal-on-missing in the MOD path.
+  const runAsNew = async (child: WikiNode, prefix: string): Promise<SyncNodeResult> => {
+    const result = await syncNode(
+      wikiClient, child, targetNode.nodeToken, targetNode.spaceId, opts, prefix, refs,
+      (info) => {
+        // Pre-register: write a placeholder entry to state the moment the
+        // target node is created, before block copy starts. A kill during
+        // block copy leaves contentHash="" so the next run re-enters the
+        // MOD path (clear + recopy) into the same target node.
+        state.pages[info.sourceToken] = {
+          targetNodeToken: info.targetNodeToken,
+          targetObjToken: info.targetObjToken,
+          sourceObjToken: info.sourceObjToken,
+          title: info.title,
+          objEditTime: "",
+          contentHash: "",
+          lastSynced: new Date().toISOString(),
+        };
+        visited?.add(info.sourceToken);
+        onProgress?.();
+      },
+    );
+    if (result.ok && result.targetToken) {
+      const emptyRefs: RefMaps = { nodeMap: new Map(), objMap: new Map(), docMap: new Map() };
+      recordResultsInState(state, [result], refs ?? emptyRefs, wikiClient);
+      markVisited(result, visited);
+    }
+    return result;
+  };
+
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
     const prefix = `[${i + 1}/${total}]`;
@@ -250,35 +282,8 @@ export async function syncTreeIncremental(
     if (!existing) {
       // ── New node: full copy ─────────────────────────────────────
       console.log(`${prefix} NEW: "${child.title}"`);
-      const result = await syncNode(
-        wikiClient, child, targetNode.nodeToken, targetNode.spaceId, opts, prefix, refs,
-        (info) => {
-          // Pre-register: write a placeholder entry to state the moment the
-          // target node is created, before block copy starts. A kill during
-          // block copy leaves contentHash="" so the next run re-enters the
-          // MOD path (clear + recopy) into the same target node.
-          state.pages[info.sourceToken] = {
-            targetNodeToken: info.targetNodeToken,
-            targetObjToken: info.targetObjToken,
-            sourceObjToken: info.sourceObjToken,
-            title: info.title,
-            objEditTime: "",
-            contentHash: "",
-            lastSynced: new Date().toISOString(),
-          };
-          visited?.add(info.sourceToken);
-          onProgress?.();
-        },
-      );
+      const result = await runAsNew(child, prefix);
       results.push(result);
-
-      // Record this node AND all its descendants in state
-      if (result.ok && result.targetToken) {
-        const emptyRefs: RefMaps = { nodeMap: new Map(), objMap: new Map(), docMap: new Map() };
-        recordResultsInState(state, [result], refs ?? emptyRefs, wikiClient);
-        // Also mark any descendants that were just recorded as visited
-        markVisited(result, visited);
-      }
       sleep(500);
       onProgress?.();
       continue;
@@ -342,6 +347,20 @@ export async function syncTreeIncremental(
           title: child.title, strategy: "unchanged", ok: true, children: [],
         });
       } else {
+        // Heal: target may have been deleted out-of-band. Probe before
+        // writing; if gone, drop state and re-create in place. Double-probe
+        // with a short delay to avoid false positives on transient API
+        // errors — getNode returns null on any error, not just 404.
+        if (targetIsReallyGone(wikiClient, existing.targetNodeToken)) {
+          console.log(`${prefix} HEAL: target deleted — re-creating "${child.title}"…`);
+          delete state.pages[child.nodeToken];
+          const healResult = await runAsNew(child, prefix);
+          results.push(healResult);
+          sleep(500);
+          onProgress?.();
+          continue;
+        }
+
         // Content changed (or forced retry) — clear and re-copy
         const label = forceRetry && hash === existing.contentHash ? "RETRY" : "MOD";
         console.log(`${prefix} ${label}: "${child.title}" — updating…`);
@@ -738,6 +757,17 @@ function sleep(ms: number): void {
   execSync(`sleep ${ms / 1000}`);
 }
 
+/**
+ * Returns true only if two probes a second apart both report the node missing.
+ * Guards the heal path against transient API errors — `wikiClient.getNode`
+ * returns null on any failure, not just 404, so a single null is ambiguous.
+ */
+function targetIsReallyGone(wikiClient: WikiClient, nodeToken: string): boolean {
+  if (wikiClient.getNode(nodeToken) !== null) return false;
+  sleep(1000);
+  return wikiClient.getNode(nodeToken) === null;
+}
+
 // ─── Orphan Detection ───────────────────────────────────────────────────
 
 export interface Orphan {
@@ -875,7 +905,7 @@ export function printSummary(results: SyncNodeResult[], rootFailedImages?: Faile
 
 // ─── Check Mode (read-only drift detection) ─────────────────────────────
 
-export type CheckKind = "new" | "modified" | "retry" | "rename" | "orphan";
+export type CheckKind = "new" | "modified" | "retry" | "rename" | "orphan" | "missing";
 
 export interface CheckChange {
   kind: CheckKind;
@@ -896,10 +926,15 @@ export interface CheckReport {
  * Walk source tree and compare against saved state without writing anything.
  * Mirrors the classification logic of syncTreeIncremental so the report
  * matches what a real sync would do.
+ *
+ * Also walks the target tree to detect pages that were deleted out-of-band
+ * (e.g., user removed them in the Feishu UI). These are reported as
+ * "missing" and will be auto-healed by the next `sync` that touches them.
  */
 export function checkSync(
   wikiClient: WikiClient,
   sourceNode: WikiNode,
+  targetNode: WikiNode,
   state: SyncState,
 ): CheckReport {
   const cli = wikiClient.cli;
@@ -923,6 +958,27 @@ export function checkSync(
   const visited = new Set<string>();
   checkTreeRecursive(wikiClient, sourceNode, state, visited, report);
 
+  // Walk the target tree and collect every existing target node token.
+  // O(targetParents) API calls — same cost profile as the source walk.
+  const presentTargets = new Set<string>();
+  collectTargetTokens(wikiClient, targetNode, presentTargets);
+
+  // Any state entry whose source was visited this run but whose target
+  // is no longer under the target subtree is "missing" — target was
+  // deleted or moved out of scope. (Non-visited entries are already
+  // classified as "orphan" below.)
+  for (const [srcToken, page] of Object.entries(state.pages)) {
+    if (visited.has(srcToken) && !presentTargets.has(page.targetNodeToken)) {
+      report.changes.push({
+        kind: "missing",
+        title: page.title,
+        sourceToken: srcToken,
+        targetToken: page.targetNodeToken,
+        reason: "target deleted",
+      });
+    }
+  }
+
   for (const [srcToken, page] of Object.entries(state.pages)) {
     if (!visited.has(srcToken)) {
       report.changes.push({
@@ -935,6 +991,19 @@ export function checkSync(
   }
 
   return report;
+}
+
+/** Recursively collect every nodeToken present under `root` in the target space. */
+function collectTargetTokens(
+  wikiClient: WikiClient,
+  root: WikiNode,
+  out: Set<string>,
+): void {
+  const children = wikiClient.listChildren(root.spaceId, root.nodeToken);
+  for (const c of children) {
+    out.add(c.nodeToken);
+    if (c.hasChild) collectTargetTokens(wikiClient, c, out);
+  }
 }
 
 function checkTreeRecursive(
@@ -1016,7 +1085,7 @@ export function printCheckReport(
   state: SyncState,
 ): boolean {
   const byKind: Record<CheckKind, CheckChange[]> = {
-    new: [], modified: [], retry: [], rename: [], orphan: [],
+    new: [], modified: [], retry: [], rename: [], orphan: [], missing: [],
   };
   for (const c of report.changes) byKind[c.kind].push(c);
 
@@ -1037,13 +1106,13 @@ export function printCheckReport(
   if (report.rootChanged) console.log('  ~ MOD    root page');
 
   const SYM: Record<CheckKind, string> = {
-    new: "+", modified: "~", retry: "⟲", rename: "→", orphan: "-",
+    new: "+", modified: "~", retry: "⟲", rename: "→", orphan: "-", missing: "✗",
   };
   const LABEL: Record<CheckKind, string> = {
-    new: "NEW   ", modified: "MOD   ", retry: "RETRY ",
-    rename: "RENAME", orphan: "ORPHAN",
+    new: "NEW    ", modified: "MOD    ", retry: "RETRY  ",
+    rename: "RENAME ", orphan: "ORPHAN ", missing: "MISSING",
   };
-  const ORDER: CheckKind[] = ["new", "modified", "retry", "rename", "orphan"];
+  const ORDER: CheckKind[] = ["new", "modified", "missing", "retry", "rename", "orphan"];
   for (const kind of ORDER) {
     for (const c of byKind[kind]) {
       const reason = c.reason ? ` — ${c.reason}` : "";
@@ -1054,6 +1123,7 @@ export function printCheckReport(
   console.log("\nSummary:");
   if (byKind.new.length)      console.log(`  New:       ${byKind.new.length}`);
   if (byKind.modified.length) console.log(`  Modified:  ${byKind.modified.length}`);
+  if (byKind.missing.length)  console.log(`  Missing:   ${byKind.missing.length} (target deleted, will re-create on next sync)`);
   if (byKind.retry.length)    console.log(`  Retry:     ${byKind.retry.length}`);
   if (byKind.rename.length)   console.log(`  Renamed:   ${byKind.rename.length}`);
   if (byKind.orphan.length)   console.log(`  Orphans:   ${byKind.orphan.length}`);

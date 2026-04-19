@@ -121,7 +121,7 @@ Determine the action from user intent:
 |-------------|--------|
 | Upload local markdown to Feishu | `upload <input.md>` |
 | Optimize existing Feishu doc | Skill workflow (fetch → edit → upload) |
-| Update Feishu doc from local file | `upload <file.md> --wiki-node <parent-node-id>` |
+| Update Feishu doc from local file | `optimize --doc <id> --input <file>` |
 | Fetch Feishu doc as markdown | `fetch --doc <id>` |
 | Analyze document structure | `analyze <input.md>` |
 | Extract table titles for LLM | `highlight extract <input.md>` |
@@ -144,9 +144,12 @@ lark-hirono upload <input.md> [title] [options]
 - `--wiki-space <id>` — Wiki space ID
 - `--wiki-node <id>` — Parent node ID
 - `--bg-mode <mode>` — Heading background: light | dark
+- `--image-dir <dir>` — Directory for downloaded images
+- `--strip-title` — Remove first H1 heading
 - `--no-highlight` — Skip keyword highlighting
 - `--verify` — Fetch and verify after upload
-- `--dry-run` — Print preprocessed markdown, don't upload
+- `--dry-run` — Preprocess only, print markdown to stdout
+- `-v, --verbose` — Verbose logging
 
 **For catalog_table docs** (tables with Code/Title columns):
 1. Run `highlight extract input.md` first
@@ -420,14 +423,14 @@ Check the output for:
 Retrieve Feishu document as markdown.
 
 ```bash
-lark-hirono fetch --doc <doc-id>
+lark-hirono fetch --doc <doc-id> [--output file.md]
 ```
 
 **Options:**
 - `--doc <id>` — Document ID (required)
-- `-v, --verbose` — Verbose logging
+- `--output <file>` — Save to file (default: stdout)
 
-Outputs markdown to stdout.
+Outputs markdown to stdout unless `--output` is given.
 
 ---
 
@@ -482,16 +485,20 @@ Fetch and verify Feishu document quality.
 
 ```bash
 lark-hirono verify --doc <doc-id>
+lark-hirono verify <doc-id>          # positional form
 ```
 
-Checks:
-- Heading numbers sequential
-- No Chinese ordinals remaining
-- Callout present (narrative docs)
-- Table headers bolded
-- No duplicate paragraphs
+**Options:**
+- `--doc <id>` — Document ID (required unless passed positionally)
+- `-v, --verbose` — Verbose output
 
-Returns JSON report with issues found.
+Reports:
+- Block/heading/table counts, heading background coverage
+- Red highlights and bold header counts
+- Residual HTML tags (should be empty)
+- Pass/fail checks for structural and content-level expectations
+
+Exit code `0` on pass, `1` on any failing check.
 
 ---
 

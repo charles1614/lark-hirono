@@ -236,8 +236,10 @@ Options:
   --browser-state <path>    Playwright browser state file
                             (default: ~/.config/lark-hirono/browser-state.json)
   --dry-run                 Print source tree without syncing
-  --check                   Diff source vs saved state (read-only);
-                            exit 0 if in sync, 1 if drift or no state
+  --check                   Read-only diff of source and target vs saved
+                            state. Reports new/modified/missing/retry/
+                            rename/orphan pages. Exit 0 if in sync,
+                            1 if drift or no state.
   --status                  Show saved-state metadata only (offline, no API)
   --force                   Ignore saved state, force full re-sync
   -v, --verbose             Verbose logging
@@ -249,6 +251,12 @@ Mirror Semantics:
 
   Sync state is saved to ~/.config/lark-hirono/sync-state/ and used to
   detect changes on the next run.
+
+Auto-Heal:
+  If a target page is deleted out-of-band (e.g., manually in Feishu),
+  the next sync that re-writes it will auto-detect and re-create it in
+  place. Run --check to surface deletions of pages whose source hasn't
+  changed.
 
 Image Transfer:
   Images are downloaded via Playwright browser session (bypasses API 403).
